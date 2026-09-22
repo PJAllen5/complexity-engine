@@ -31,6 +31,8 @@ def main() -> None:
     )
 
     print(f"Selected signal columns: {', '.join(result['selected_signals'])}")
+    if result["missing_columns"]:
+        print(f"Warning: dataset is missing columns expected by the '{args.domain}' domain profile: {', '.join(result['missing_columns'])}")
     print(f"Saved summary to: {result['summary_csv']}")
     print(f"Saved complexity metrics to: {result['complexity_csv']}")
     print(f"Saved report to: {result['report_md']}")

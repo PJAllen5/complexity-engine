@@ -304,6 +304,7 @@ def analyze_dataset(
         "data": df,
         "selected_signals": selected_signals,
         "domain_profile": domain_profile.as_dict(),
+        "missing_columns": missing_columns,
         "condition_summary": summary,
         "complexity_summary": complexity,
         "cross_signal_summary": cross_signal,
