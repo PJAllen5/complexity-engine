@@ -1,8 +1,13 @@
 import numpy as np
 import pandas as pd
 
-from complexity_engine.analysis import analyze_dataset, condition_cross_signal_summary, resolve_signal_columns
-from complexity_engine.metrics import mutual_information, sample_entropy, spectral_entropy
+from complexity_engine.analysis import (
+    analyze_dataset,
+    condition_cross_signal_summary,
+    condition_significance_summary,
+    resolve_signal_columns,
+)
+from complexity_engine.metrics import compare_conditions, mutual_information, sample_entropy, spectral_entropy
 
 
 def test_sample_entropy_known_value():
@@ -74,3 +79,43 @@ def test_condition_cross_signal_summary_requires_multiple_signals():
     df = pd.DataFrame({"condition": ["rest", "task"], "signal_a": [1.0, 2.0]})
     result = condition_cross_signal_summary(df, ["signal_a"], condition_col="condition")
     assert result.empty
+
+
+def test_compare_conditions_detects_clear_difference():
+    rng = np.random.default_rng(1)
+    x = rng.normal(loc=0.0, scale=1.0, size=100)
+    y = rng.normal(loc=5.0, scale=1.0, size=100)
+
+    result = compare_conditions(x, y)
+
+    assert result["p_value"] < 0.001
+    assert result["cohens_d"] < -3.0
+
+
+def test_compare_conditions_no_difference_not_significant():
+    rng = np.random.default_rng(2)
+    x = rng.normal(loc=0.0, scale=1.0, size=100)
+    y = rng.normal(loc=0.0, scale=1.0, size=100)
+
+    result = compare_conditions(x, y)
+
+    assert result["p_value"] > 0.05
+
+
+def test_compare_conditions_handles_insufficient_samples():
+    result = compare_conditions([1.0], [1.0, 2.0, 3.0])
+    assert np.isnan(result["p_value"])
+    assert np.isnan(result["cohens_d"])
+
+
+def test_condition_significance_summary_covers_all_condition_pairs():
+    df = pd.DataFrame(
+        {
+            "condition": ["a"] * 5 + ["b"] * 5 + ["c"] * 5,
+            "signal": [1.0, 1.1, 0.9, 1.05, 0.95, 5.0, 5.1, 4.9, 5.05, 4.95, 10.0, 10.1, 9.9, 10.05, 9.95],
+        }
+    )
+    result = condition_significance_summary(df, signal_col="signal", condition_col="condition")
+
+    assert len(result) == 3  # a-b, a-c, b-c
+    assert set(zip(result["condition_a"], result["condition_b"])) == {("a", "b"), ("a", "c"), ("b", "c")}
