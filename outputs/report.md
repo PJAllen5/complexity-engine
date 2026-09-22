@@ -21,6 +21,9 @@ condition signal  n_samples      mean      std  min  max  variance  sample_entro
 ## Statistical significance
 signal condition_a condition_b  n_a  n_b    mean_a    mean_b  t_statistic      p_value  cohens_d
 signal        rest        task   30   30 73.736667 82.796667   -15.394299 6.556483e-18 -3.974791
+## Visualizations
+![signal_condition_comparison](plots/signal_condition_comparison.png)
+![signal_complexity_metrics](plots/signal_complexity_metrics.png)
 ## Interpretation
 Guiding question: Does the monitored signal show tighter predictive precision when attention is engaged by the task, or reduced top-down control?
 Methodological note: entropy-based metrics quantify unpredictability, not complexity in the fuller sense used in complexity science (Crutchfield & Young, 1989; Gell-Mann & Lloyd, 1996). A maximally random signal has high entropy but little structured organization, so read the entropy changes below as changes in signal regularity, not as a direct verdict on how "complex" the underlying system is.

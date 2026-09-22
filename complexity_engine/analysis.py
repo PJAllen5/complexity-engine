@@ -11,6 +11,7 @@ import pandas as pd
 
 from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles
 from .metrics import compare_conditions, compute_complexity_metrics, descriptive_stats, mutual_information
+from .plots import plot_complexity_metrics, plot_condition_comparison, plot_mutual_information_heatmap
 
 _SIGNIFICANCE_ALPHA = 0.05
 
@@ -324,6 +325,22 @@ def analyze_dataset(
     significance.to_csv(significance_path, index=False)
     cross_signal.to_csv(cross_signal_path, index=False)
 
+    plots_dir = output_dir / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    plot_paths: dict[str, str] = {}
+    for signal in selected_signals:
+        comparison_path = plot_condition_comparison(df, signal, condition_col, plots_dir / f"{signal}_condition_comparison.png")
+        plot_paths[f"{signal}_condition_comparison"] = comparison_path
+        metrics_plot_path = plot_complexity_metrics(
+            complexity, signal, domain_profile.recommended_metrics or list(_DEFAULT_METRIC_EXPLANATIONS), plots_dir / f"{signal}_complexity_metrics.png"
+        )
+        if metrics_plot_path:
+            plot_paths[f"{signal}_complexity_metrics"] = metrics_plot_path
+    if not cross_signal.empty:
+        heatmap_path = plot_mutual_information_heatmap(cross_signal, plots_dir / "cross_signal_mutual_information.png")
+        if heatmap_path:
+            plot_paths["cross_signal_mutual_information"] = heatmap_path
+
     report_path = output_dir / "report.md"
     report_lines = [
         "# Complexity Analysis Report",
@@ -373,6 +390,12 @@ def analyze_dataset(
                 "",
             ]
         )
+    if plot_paths:
+        report_lines.append("## Visualizations")
+        for label, path in plot_paths.items():
+            relative_path = Path(path).relative_to(output_dir)
+            report_lines.append(f"![{label}]({relative_path.as_posix()})")
+        report_lines.append("")
     report_lines.extend(
         _generate_interpretation_lines(complexity, domain_profile, cross_signal_df=cross_signal, significance_df=significance)
     )
@@ -392,5 +415,6 @@ def analyze_dataset(
         "complexity_csv": str(complexity_path),
         "significance_csv": str(significance_path),
         "cross_signal_csv": str(cross_signal_path),
+        "plot_paths": plot_paths,
         "report_md": str(report_path),
     }

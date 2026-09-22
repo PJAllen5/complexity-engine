@@ -29,9 +29,12 @@ that foundation.
    report uses these to explain *why* a higher or lower value matters for that domain, rather
    than just printing numbers. With multiple signals, the interpretation is grouped into a
    subsection per signal plus a cross-signal relationships subsection.
-7. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`,
-   `significance_summary.csv`, `cross_signal_summary.csv`, and a human-readable `report.md` to
-   an output directory.
+7. **Visualize**: generates a condition-comparison box plot and a complexity-metrics bar
+   chart per signal, plus a mutual-information heatmap when multiple signals are selected —
+   saved as PNGs under `outputs/plots/` and embedded in `report.md`.
+8. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`,
+   `significance_summary.csv`, `cross_signal_summary.csv`, the plot PNGs, and a human-readable
+   `report.md` to an output directory.
 
 Domain profiles (`physiology`, `cognitive`, `stress`, `attention`, and any custom ones you
 add) live in `config/domain_profiles.yaml` (or `.json`) and can be extended or overridden
@@ -47,13 +50,14 @@ complexity-engine/
 ├── complexity_engine/
 │   ├── analysis.py                  # ingestion, stats, report generation
 │   ├── domain_profiles.py           # domain profile registry + YAML/JSON loading
-│   └── metrics.py                   # sample entropy, spectral entropy, DFA exponent, mutual information, condition comparison
+│   ├── metrics.py                   # sample entropy, spectral entropy, DFA exponent, mutual information, condition comparison
+│   └── plots.py                     # condition comparison, complexity metrics, mutual information heatmap
 ├── config/
 │   ├── domain_profiles.yaml         # user-facing domain definitions
 │   └── domain_profiles.json
 ├── data/
 │   └── physio_example.csv           # sample dataset for the physiology/attention domains
-├── outputs/                         # generated CSV summaries + report.md
+├── outputs/                         # generated CSV summaries, plots/, and report.md
 ├── tests/                           # pytest suite for metrics, domains, and analysis
 └── papers/
     └── references.bib               # curated complexity science / information theory / cognitive science bibliography
@@ -107,5 +111,3 @@ analysis pipeline above.
 - expand the domain profile library and cross-reference profiles with the bibliography
 - explore network-based metrics (degree, clustering, modularity) for data shaped as a network
   rather than parallel time series
-- generate plots (raw signal traces, metric comparisons, mutual-information heatmaps) alongside
-  the CSV/Markdown output
