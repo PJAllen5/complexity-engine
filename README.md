@@ -16,27 +16,33 @@ built on that foundation.
 
 ## Time-series pipeline: what it does today
 
-1. **Ingest** a CSV or Excel file of time-series data (one or more signal columns, a
-   condition/group column, and optional metadata like subject ID or trial).
-2. **Summarize** each signal by condition (mean, std, min, max, median).
-3. **Compute complexity metrics** per condition — sample entropy, spectral entropy, and a DFA
+1. **Ingest** one or more CSV/Excel files of time-series data (one or more signal columns, a
+   condition/group column, and optional metadata like subject ID or trial). Multiple files
+   (e.g. one per session) are merged if they share the same columns — a mismatch raises a
+   clear error rather than silently merging incompatible data.
+2. **Clean**: drops rows missing a required value (signal or condition), and detects — but
+   does not automatically remove — exact duplicate rows, since two different time points can
+   legitimately share the same signal value. Every input/dropped/output row count is recorded
+   and surfaced in a "Data provenance" report section, so cleaning is never silent.
+3. **Summarize** each signal by condition (mean, std, min, max, median).
+4. **Compute complexity metrics** per condition — sample entropy, spectral entropy, and a DFA
    (detrended fluctuation analysis) scaling exponent — restricted to whichever metrics the
    active domain profile recommends.
-4. **Test statistical significance** between every pair of conditions on the raw signal
+5. **Test statistical significance** between every pair of conditions on the raw signal
    (Welch's t-test + Cohen's d effect size), so directional differences can be read alongside
    whether they're distinguishable from sampling noise.
-5. **Compute cross-signal coupling**: when more than one signal column is selected, pairwise
+6. **Compute cross-signal coupling**: when more than one signal column is selected, pairwise
    mutual information is computed per condition, capturing how tightly signals are coupled.
-6. **Interpret domain-aware**: each domain profile supplies a guiding analysis question,
+7. **Interpret domain-aware**: each domain profile supplies a guiding analysis question,
    descriptions of signal roles (primary signal / condition / covariate), and
    metric-specific interpretation text (including for cross-signal coupling). The generated
    report uses these to explain *why* a higher or lower value matters for that domain, rather
    than just printing numbers. With multiple signals, the interpretation is grouped into a
    subsection per signal plus a cross-signal relationships subsection.
-7. **Visualize**: generates a condition-comparison box plot and a complexity-metrics bar
+8. **Visualize**: generates a condition-comparison box plot and a complexity-metrics bar
    chart per signal, plus a mutual-information heatmap when multiple signals are selected —
    saved as PNGs under `outputs/plots/` and embedded in `report.md`.
-8. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`,
+9. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`,
    `significance_summary.csv`, `cross_signal_summary.csv`, the plot PNGs, and a human-readable
    `report.md` to an output directory.
 
@@ -112,6 +118,9 @@ python run_analysis.py \
 python run_network_analysis.py \
   --data data/network_example.csv \
   --output-dir outputs/network
+
+# --data also accepts a comma-separated list of files (e.g. one per session) to merge:
+python run_analysis.py --data session1.csv,session2.csv --signal-cols signal
 ```
 
 Run the test suite with:
@@ -149,6 +158,9 @@ out of sync with the bibliography (wrong year, removed entry, typo'd author).
 
 ## Suggested next steps
 
-- expand the domain profile library and cross-reference profiles with the bibliography
 - for the network pipeline: directed-graph support, per-node centrality output, and a
   random-graph baseline comparison for a formal small-world "sigma" statistic
+- unit handling (e.g. detecting/converting mismatched physical units across merged files) —
+  deliberately deferred until there's a real messy dataset motivating a concrete design
+- apply the same multi-file/duplicate-detection/provenance-tracking approach to the network
+  pipeline's edge-list ingestion

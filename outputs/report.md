@@ -10,6 +10,11 @@
 - condition: Task phase, condition, or experimental state used for comparison.
 - covariate: Optional trial-level, session-level, or participant metadata.
 Note: the 'attention' domain profile expects columns [signal, condition, trial]; missing from this dataset: trial.
+## Data provenance
+- Input rows: 60
+- Duplicate rows detected (not removed automatically): 0
+- Rows dropped for missing values in ['signal', 'condition']: 0
+- Rows analyzed: 60
 ## Condition summary
 condition  mean_signal  std_signal  min_signal  max_signal  median signal
      rest    73.736667    1.192356        71.3        75.8   73.85 signal

@@ -56,17 +56,49 @@ _METADATA_COLUMNS = {
     "label",
     "id",
     "participant",
+    "source_file",
 }
 
 
-def load_dataset(data_path: str | Path) -> pd.DataFrame:
-    path = Path(data_path)
+def _load_single_file(path: Path) -> pd.DataFrame:
     suffix = path.suffix.lower()
     if suffix == ".csv":
         return pd.read_csv(path)
     if suffix in {".xls", ".xlsx"}:
         return pd.read_excel(path)
     raise ValueError(f"Unsupported file type: {suffix}")
+
+
+def load_dataset(data_path: str | Path | Sequence[str | Path]) -> pd.DataFrame:
+    """Load one file, or merge several files from the same multi-session/multi-subject study.
+
+    A single path keeps the original single-file schema exactly (no added columns).
+    Multiple paths are concatenated and must share the same columns -- a mismatch is a
+    strong signal of a mismatched file being merged by mistake, so it's a hard error
+    rather than a silent NaN-filled merge.
+    """
+    if isinstance(data_path, (str, Path)):
+        return _load_single_file(Path(data_path))
+
+    paths = [Path(p) for p in data_path]
+    if not paths:
+        raise ValueError("No data files were provided.")
+    frames = [_load_single_file(path) for path in paths]
+
+    column_sets = [frozenset(frame.columns) for frame in frames]
+    if len(set(column_sets)) > 1:
+        details = "; ".join(f"{path.name}: {sorted(cols)}" for path, cols in zip(paths, column_sets))
+        raise ValueError(f"Cannot merge files with different columns: {details}")
+
+    for path, frame in zip(paths, frames):
+        frame["source_file"] = path.name
+    return pd.concat(frames, ignore_index=True)
+
+
+def _describe_data_source(data_path: str | Path | Sequence[str | Path]) -> str:
+    if isinstance(data_path, (str, Path)):
+        return Path(data_path).name
+    return ", ".join(Path(p).name for p in data_path)
 
 
 def resolve_signal_columns(df: pd.DataFrame, signal_cols: str | list[str] | None = None) -> list[str]:
@@ -82,6 +114,37 @@ def resolve_signal_columns(df: pd.DataFrame, signal_cols: str | list[str] | None
     if not candidate_columns:
         raise ValueError("No numeric signal columns were found. Please specify signal_cols manually.")
     return candidate_columns
+
+
+def clean_dataset(df: pd.DataFrame, required_cols: Sequence[str]) -> tuple[pd.DataFrame, dict]:
+    """Drop rows missing a value in any required column; detect (but don't drop) exact
+    duplicate rows.
+
+    Duplicates are only flagged, not removed: without a timestamp or other unique key,
+    two different observations can legitimately share the same signal value, especially
+    in time series with limited measurement precision, so silently deleting "duplicate"
+    rows risks deleting real data rather than errors. Missing-value rows are safe to drop
+    automatically since a NaN signal value breaks the downstream metrics outright.
+
+    Returns the cleaned frame alongside a provenance record of what was found/dropped and
+    why, so cleaning is never silent -- see analyze_dataset()'s "Data provenance" report
+    section.
+    """
+    provenance: dict = {"input_rows": int(df.shape[0])}
+
+    provenance["duplicate_rows_detected"] = int(df.duplicated().sum())
+
+    checked_cols = [col for col in required_cols if col in df.columns]
+    if checked_cols:
+        missing_mask = df[checked_cols].isna().any(axis=1)
+    else:
+        missing_mask = pd.Series(False, index=df.index)
+    provenance["rows_dropped_missing_values"] = int(missing_mask.sum())
+    provenance["missing_value_columns_checked"] = checked_cols
+    df = df.loc[~missing_mask]
+
+    provenance["output_rows"] = int(df.shape[0])
+    return df.reset_index(drop=True), provenance
 
 
 def summarize_condition(df: pd.DataFrame, signal_col: str, condition_col: str = "condition") -> pd.DataFrame:
@@ -277,7 +340,7 @@ def _generate_interpretation_lines(
 
 
 def analyze_dataset(
-    data_path: str | Path,
+    data_path: str | Path | Sequence[str | Path],
     signal_col: str | None = None,
     signal_cols: str | list[str] | None = None,
     condition_col: str = "condition",
@@ -290,6 +353,7 @@ def analyze_dataset(
     df = load_dataset(data_path)
     selected_signals = resolve_signal_columns(df, signal_cols=signal_cols if signal_cols is not None else signal_col)
     missing_columns = _missing_expected_columns(df, domain_profile)
+    df, provenance = clean_dataset(df, required_cols=[*selected_signals, condition_col])
 
     summary_frames = []
     complexity_frames = []
@@ -348,7 +412,7 @@ def analyze_dataset(
         f"- Domain: {domain_profile.name}",
         f"- Domain description: {domain_profile.description}",
         f"- Analysis question: {domain_profile.analysis_question}" if domain_profile.analysis_question else "",
-        f"- Data source: {Path(data_path).name}",
+        f"- Data source: {_describe_data_source(data_path)}",
         f"- Signal columns: {', '.join(selected_signals)}",
         f"- Condition column: {condition_col}",
         "",
@@ -364,6 +428,15 @@ def analyze_dataset(
             f"[{', '.join(domain_profile.expected_columns)}]; missing from this dataset: {', '.join(missing_columns)}."
         )
         report_lines.append("")
+    report_lines.append("## Data provenance")
+    report_lines.append(f"- Input rows: {provenance['input_rows']}")
+    report_lines.append(f"- Duplicate rows detected (not removed automatically): {provenance['duplicate_rows_detected']}")
+    report_lines.append(
+        f"- Rows dropped for missing values in {provenance['missing_value_columns_checked']}: "
+        f"{provenance['rows_dropped_missing_values']}"
+    )
+    report_lines.append(f"- Rows analyzed: {provenance['output_rows']}")
+    report_lines.append("")
     report_lines.extend(
         [
             "## Condition summary",
@@ -407,6 +480,7 @@ def analyze_dataset(
         "selected_signals": selected_signals,
         "domain_profile": domain_profile.as_dict(),
         "missing_columns": missing_columns,
+        "provenance": provenance,
         "condition_summary": summary,
         "complexity_summary": complexity,
         "significance_summary": significance,
