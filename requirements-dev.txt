@@ -1,0 +1,7 @@
+# Validation-only dependencies -- not needed to run the pipeline, only to run
+# tests/test_metric_validation.py, which cross-checks our own complexity metrics
+# against these independent reference implementations. See that file's docstring.
+-r requirements.txt
+antropy
+nolds
+scikit-learn

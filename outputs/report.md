@@ -21,8 +21,8 @@ condition  mean_signal  std_signal  min_signal  max_signal  median signal
      task    82.796667    2.994879        77.9        88.3   83.15 signal
 ## Complexity metrics
 condition signal  n_samples      mean      std  min  max  variance  sample_entropy  spectral_entropy  dfa_exponent
-     rest signal         30 73.736667 1.192356 71.3 75.8  1.421713        0.000000          0.859540      0.625685
-     task signal         30 82.796667 2.994879 77.9 88.3  8.969299        0.980829          0.812203     -0.166528
+     rest signal         30 73.736667 1.192356 71.3 75.8  1.421713        0.000000          0.664821      0.625685
+     task signal         30 82.796667 2.994879 77.9 88.3  8.969299        0.980829          0.496929     -0.166528
 ## Statistical significance
 signal condition_a condition_b  n_a  n_b    mean_a    mean_b  t_statistic      p_value  cohens_d
 signal        rest        task   30   30 73.736667 82.796667   -15.394299 6.556483e-18 -3.974791
