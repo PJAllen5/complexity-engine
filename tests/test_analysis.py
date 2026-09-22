@@ -203,3 +203,31 @@ def test_single_signal_report_has_no_cross_signal_section(tmp_path):
     report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
     assert "Cross-signal" not in report
     assert "### signal" not in report
+
+
+def test_missing_columns_are_returned_programmatically(tmp_path):
+    csv_path = _write_signal_csv(tmp_path, [1.0, 2.0], [3.0, 4.0])
+
+    result = analyze_dataset(
+        csv_path,
+        signal_cols=["signal"],
+        condition_col="condition",
+        domain="cognitive",
+        output_dir=tmp_path / "outputs",
+    )
+
+    assert result["missing_columns"] == ["trial"]
+
+
+def test_missing_columns_is_empty_when_all_expected_columns_present(tmp_path):
+    csv_path = _write_signal_csv(tmp_path, [1.0, 2.0], [3.0, 4.0])
+
+    result = analyze_dataset(
+        csv_path,
+        signal_cols=["signal"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    assert result["missing_columns"] == []
