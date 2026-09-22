@@ -158,9 +158,9 @@ out of sync with the bibliography (wrong year, removed entry, typo'd author).
 
 ## Suggested next steps
 
-- for the network pipeline: directed-graph support, per-node centrality output, and a
-  random-graph baseline comparison for a formal small-world "sigma" statistic
-- unit handling (e.g. detecting/converting mismatched physical units across merged files) —
-  deliberately deferred until there's a real messy dataset motivating a concrete design
-- apply the same multi-file/duplicate-detection/provenance-tracking approach to the network
-  pipeline's edge-list ingestion
+Tracked as GitHub issues rather than duplicated here — see the repo's issue tracker for the
+full history (closed "Stage N" issues document what's shipped) and open issues for what's
+next: directed-graph/centrality support and a formal small-world sigma statistic for the
+network pipeline, bringing the network pipeline's ingestion up to parity with the time-series
+pipeline's multi-file/duplicate-detection/provenance handling, load-time domain-profile config
+validation, CLI smoke tests, and unit-handling design.
