@@ -1,6 +1,7 @@
+import networkx as nx
 import pandas as pd
 
-from complexity_engine.network_metrics import build_graph, compute_network_metrics
+from complexity_engine.network_metrics import build_graph, compute_network_metrics, compute_node_centrality
 
 
 def test_build_graph_creates_expected_nodes_and_edges():
@@ -18,8 +19,6 @@ def test_build_graph_defaults_weight_to_one_without_weight_column():
 
 
 def test_compute_network_metrics_on_empty_graph():
-    import networkx as nx
-
     metrics = compute_network_metrics(nx.Graph())
     assert metrics["n_nodes"] == 0
     assert metrics["n_edges"] == 0
@@ -49,8 +48,6 @@ def test_compute_network_metrics_detects_disconnected_components():
 
 
 def test_hub_dominated_graph_has_higher_max_degree_than_uniform_graph():
-    import networkx as nx
-
     uniform_graph = nx.watts_strogatz_graph(n=20, k=4, p=0.1, seed=1)
     hub_graph = nx.barabasi_albert_graph(n=20, m=2, seed=1)
 
@@ -58,3 +55,53 @@ def test_hub_dominated_graph_has_higher_max_degree_than_uniform_graph():
     hub_max_degree = max(d for _, d in hub_graph.degree())
 
     assert hub_max_degree > uniform_max_degree
+
+
+def test_build_graph_directed_preserves_edge_direction():
+    edges = pd.DataFrame({"source": ["a", "b"], "target": ["b", "c"]})
+    graph = build_graph(edges, weight_col=None, directed=True)
+
+    assert graph.is_directed()
+    assert graph.has_edge("a", "b")
+    assert not graph.has_edge("b", "a")
+
+
+def test_compute_network_metrics_directed_reports_in_out_degree():
+    edges = pd.DataFrame({"source": ["a", "b", "c"], "target": ["b", "c", "a"]})
+    graph = build_graph(edges, weight_col=None, directed=True)
+
+    metrics = compute_network_metrics(graph)
+
+    assert metrics["mean_in_degree"] == 1.0
+    assert metrics["mean_out_degree"] == 1.0
+    assert metrics["n_strongly_connected_components"] == 1
+    # a->b->c->a: 1-hop pairs (a,b),(b,c),(c,a) and 2-hop pairs (a,c),(b,a),(c,b) -> mean 1.5
+    assert metrics["avg_shortest_path_length"] == 1.5
+
+
+def test_compute_network_metrics_directed_without_cycle_has_nan_path_length():
+    # a->b->c: not strongly connected (no way back from c to a), so the largest
+    # strongly connected component is a single node and path length is undefined.
+    edges = pd.DataFrame({"source": ["a", "b"], "target": ["b", "c"]})
+    graph = build_graph(edges, weight_col=None, directed=True)
+
+    metrics = compute_network_metrics(graph)
+
+    assert metrics["n_strongly_connected_components"] == 3
+    assert pd.isna(metrics["avg_shortest_path_length"])
+
+
+def test_compute_node_centrality_returns_expected_columns():
+    edges = pd.DataFrame({"source": ["a", "b", "c"], "target": ["b", "c", "a"]})
+    graph = build_graph(edges, weight_col=None)
+
+    centrality = compute_node_centrality(graph)
+
+    assert set(centrality["node"]) == {"a", "b", "c"}
+    assert list(centrality.columns) == ["node", "degree_centrality", "betweenness_centrality", "eigenvector_centrality"]
+    assert (centrality["degree_centrality"] == 1.0).all()  # triangle: every node connects to both others
+
+
+def test_compute_node_centrality_on_empty_graph_returns_empty_frame():
+    centrality = compute_node_centrality(nx.Graph())
+    assert centrality.empty

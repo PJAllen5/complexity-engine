@@ -5,6 +5,7 @@
 - Data source: network_example.csv
 - Edge columns: source, target, weight
 - Condition column: condition
+- Directed: False
 ## Domain edge roles
 - source: One endpoint of each edge (a node identifier).
 - target: The other endpoint of each edge (a node identifier).

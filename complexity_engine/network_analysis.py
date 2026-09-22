@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles
-from .network_metrics import build_graph, compute_network_metrics
+from .network_metrics import build_graph, compute_network_metrics, compute_node_centrality
 from .plots import plot_degree_distribution
 
 _DEFAULT_METRIC_EXPLANATIONS = {
@@ -24,6 +24,8 @@ _DEFAULT_METRIC_EXPLANATIONS = {
     "avg_shortest_path_length": "Average shortest path length is the mean hop count between reachable node pairs.",
     "density": "Density is the fraction of all possible edges that are actually present.",
     "mean_degree": "Mean degree is the average number of connections per node.",
+    "mean_in_degree": "Mean in-degree is the average number of incoming connections per node.",
+    "mean_out_degree": "Mean out-degree is the average number of outgoing connections per node.",
 }
 
 
@@ -80,6 +82,8 @@ def analyze_network(
     target_col: str = "target",
     weight_col: str | None = "weight",
     condition_col: str | None = "condition",
+    directed: bool = False,
+    compute_centrality: bool = False,
     output_dir: str | Path = "outputs",
     domain: str | None = "network",
     domain_config: str | Path | None = None,
@@ -97,7 +101,7 @@ def analyze_network(
         groups = {"all": df}
 
     graphs = {
-        condition: build_graph(edges, source_col=source_col, target_col=target_col, weight_col=weight_col)
+        condition: build_graph(edges, source_col=source_col, target_col=target_col, weight_col=weight_col, directed=directed)
         for condition, edges in groups.items()
     }
     metrics_df = pd.DataFrame.from_records(
@@ -108,6 +112,18 @@ def analyze_network(
     output_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = output_dir / "network_metrics_summary.csv"
     metrics_df.to_csv(metrics_path, index=False)
+
+    centrality_df = pd.DataFrame()
+    centrality_path = None
+    if compute_centrality:
+        centrality_frames = []
+        for condition, graph in graphs.items():
+            frame = compute_node_centrality(graph)
+            frame.insert(0, "condition", condition)
+            centrality_frames.append(frame)
+        centrality_df = pd.concat(centrality_frames, ignore_index=True) if centrality_frames else pd.DataFrame()
+        centrality_path = output_dir / "node_centrality.csv"
+        centrality_df.to_csv(centrality_path, index=False)
 
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -123,6 +139,7 @@ def analyze_network(
         f"- Data source: {Path(data_path).name}",
         f"- Edge columns: {source_col}, {target_col}" + (f", {weight_col}" if weight_col in df.columns else ""),
         f"- Condition column: {condition_col if has_condition else 'none (single network)'}",
+        f"- Directed: {directed}",
         "",
     ]
     if domain_profile.signal_roles:
@@ -136,7 +153,17 @@ def analyze_network(
             f"[{', '.join(domain_profile.expected_columns)}]; missing from this dataset: {', '.join(missing_columns)}."
         )
         report_lines.append("")
+    if directed:
+        report_lines.append(
+            "Note: this is a directed network. n_connected_components counts weakly connected "
+            "components (ignoring direction); avg_shortest_path_length is computed on the "
+            "largest strongly connected component (n_strongly_connected_components), the only "
+            "subgraph where every node pair is mutually reachable."
+        )
+        report_lines.append("")
     report_lines.extend(["## Network metrics", metrics_df.to_string(index=False), ""])
+    if compute_centrality and not centrality_df.empty:
+        report_lines.extend(["## Node centrality", centrality_df.to_string(index=False), ""])
     if degree_plot_path:
         report_lines.extend(["## Visualizations", f"![degree_distribution](plots/{Path(degree_plot_path).name})", ""])
     report_lines.extend(_generate_network_interpretation_lines(metrics_df, domain_profile))
@@ -149,7 +176,9 @@ def analyze_network(
         "domain_profile": domain_profile.as_dict(),
         "missing_columns": missing_columns,
         "network_metrics_summary": metrics_df,
+        "node_centrality": centrality_df,
         "metrics_csv": str(metrics_path),
+        "centrality_csv": str(centrality_path) if centrality_path else None,
         "degree_plot_path": degree_plot_path,
         "report_md": str(report_path),
     }
