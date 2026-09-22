@@ -8,6 +8,27 @@ from __future__ import annotations
 import networkx as nx
 import pandas as pd
 
+# Every key compute_network_metrics() can produce, for validating a domain profile's
+# recommended_metrics before an analysis run (see network_analysis.py). The
+# directed-only keys are included so a directed-specific profile validates too;
+# they just won't appear in an undirected run's output columns.
+NETWORK_METRIC_KEYS = frozenset(
+    {
+        "n_nodes",
+        "n_edges",
+        "density",
+        "mean_degree",
+        "avg_clustering",
+        "transitivity",
+        "modularity",
+        "avg_shortest_path_length",
+        "n_connected_components",
+        "mean_in_degree",
+        "mean_out_degree",
+        "n_strongly_connected_components",
+    }
+)
+
 
 def build_graph(
     edges: pd.DataFrame,

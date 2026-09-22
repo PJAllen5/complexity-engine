@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -200,6 +201,28 @@ def get_domain_profile(domain: str | None = None) -> DomainProfile:
         supported = ", ".join(sorted(_DOMAIN_REGISTRY))
         raise ValueError(f"Unknown domain: {domain}. Supported domains: {supported}.")
     return _DOMAIN_REGISTRY[normalized]
+
+
+def validate_recommended_metrics(profile: DomainProfile, known_metrics: Collection[str]) -> None:
+    """Raise a clear error if a profile's recommended_metrics names a metric that
+    doesn't exist in the given pipeline's metric registry.
+
+    Config mistakes (a typo, or a metric that's valid for the other pipeline) would
+    otherwise only surface deep inside metric computation -- or, for the network
+    pipeline, not at all, since it doesn't gate computation on recommended_metrics
+    the way the time-series pipeline does, so an unknown name there is silently
+    dropped from the interpretation section rather than erroring. Domain profiles
+    are meant to be editable without touching Python, so this failure should be as
+    early and as clear as possible: called right after a domain profile is looked
+    up, before any (potentially expensive) data loading happens.
+    """
+    unknown = [metric for metric in profile.recommended_metrics if metric not in known_metrics]
+    if unknown:
+        supported = ", ".join(sorted(known_metrics))
+        raise ValueError(
+            f"Domain profile '{profile.name}' lists unknown recommended_metrics {unknown}; "
+            f"supported metrics are: {supported}."
+        )
 
 
 # Load any repository-level domain config if present at import time.

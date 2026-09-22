@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles
-from .network_metrics import build_graph, compute_network_metrics, compute_node_centrality
+from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
+from .network_metrics import NETWORK_METRIC_KEYS, build_graph, compute_network_metrics, compute_node_centrality
 from .plots import plot_degree_distribution
 
 _DEFAULT_METRIC_EXPLANATIONS = {
@@ -90,6 +90,7 @@ def analyze_network(
 ) -> dict[str, pd.DataFrame | dict | str]:
     load_domain_profiles(domain_config)
     domain_profile = get_domain_profile(domain)
+    validate_recommended_metrics(domain_profile, NETWORK_METRIC_KEYS)
     df = load_edge_list(data_path)
     missing_columns = _missing_expected_columns(df, domain_profile)
 

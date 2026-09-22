@@ -1,6 +1,8 @@
 import pandas as pd
+import pytest
 
 from complexity_engine.analysis import analyze_dataset
+from complexity_engine.domain_profiles import DomainProfile, validate_recommended_metrics
 
 
 def test_domain_profile_is_applied(tmp_path):
@@ -96,3 +98,46 @@ stress:
     profiles = load_domain_profiles(config_path)
     assert "stress" in profiles
     assert profiles["stress"].expected_columns == ("signal", "condition")
+
+
+def test_validate_recommended_metrics_accepts_known_metrics():
+    profile = DomainProfile(name="test", description="", recommended_metrics=("sample_entropy",))
+    validate_recommended_metrics(profile, {"sample_entropy", "spectral_entropy"})  # should not raise
+
+
+def test_validate_recommended_metrics_rejects_unknown_metric():
+    profile = DomainProfile(name="test", description="", recommended_metrics=("sample_entropy", "modularity"))
+    with pytest.raises(ValueError, match="unknown recommended_metrics"):
+        validate_recommended_metrics(profile, {"sample_entropy", "spectral_entropy"})
+
+
+def test_analyze_dataset_rejects_domain_with_unknown_metric(tmp_path):
+    df = pd.DataFrame({"condition": ["rest", "task"], "signal": [1.0, 2.0]})
+    csv_path = tmp_path / "data.csv"
+    df.to_csv(csv_path, index=False)
+
+    config_path = tmp_path / "bad_domain.yaml"
+    config_path.write_text(
+        """
+bad_domain:
+  name: bad_domain
+  description: Test domain with a metric that belongs to the network pipeline.
+  recommended_metrics:
+    - sample_entropy
+    - modularity
+  expected_columns: [signal, condition]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unknown recommended_metrics"):
+        analyze_dataset(
+            csv_path,
+            signal_cols=["signal"],
+            domain="bad_domain",
+            domain_config=config_path,
+            output_dir=tmp_path / "outputs",
+        )
+    # Fails before any output is written -- this is a load-time check, not a
+    # mid-analysis crash.
+    assert not (tmp_path / "outputs").exists()
