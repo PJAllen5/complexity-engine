@@ -22,6 +22,7 @@ SOURCE_FILES = [
     REPO_ROOT / "config" / "domain_profiles.json",
     REPO_ROOT / "complexity_engine" / "domain_profiles.py",
     REPO_ROOT / "complexity_engine" / "analysis.py",
+    REPO_ROOT / "complexity_engine" / "metrics.py",
 ]
 
 _CITATION_GROUP_RE = re.compile(r"\(([^()]*\b\d{4}[a-z]?\b[^()]*)\)")

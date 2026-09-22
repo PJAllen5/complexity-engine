@@ -150,6 +150,15 @@ Run the test suite with:
 python -m pytest -q
 ```
 
+A subset of tests (`tests/test_metric_validation.py`) cross-checks the complexity
+metrics against independent reference implementations (`antropy`, `nolds`,
+`scikit-learn`) and known theoretical values; they're skipped automatically unless
+you install the validation-only dependencies:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 ## Literature base
 
 `papers/references.bib` contains a curated bibliography covering:
