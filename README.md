@@ -1,53 +1,102 @@
 # Complexity Engine
 
-A lightweight repository for exploring complexity science, information theory, systems thinking, and related research foundations.
+A small, reproducible Python pipeline for domain-aware complexity analysis of scientific
+time-series data. It ingests raw CSV/Excel data, computes standard descriptive statistics,
+applies a domain-specific set of complexity metrics (entropy, spectral, and long-range
+correlation measures), and generates a report that explains the results in the language of
+the chosen scientific domain.
 
-## Purpose
+The project started as a literature review workspace for complexity science and information
+theory (see `papers/references.bib`) and has since grown into a working analysis tool built on
+that foundation.
 
-This project is intended as a research and reference workspace for thinking about:
+## What it does today
 
-- complexity and emergence
-- information-theoretic measures of structure and uncertainty
-- systems dynamics and self-organization
-- networks, adaptation, and nonlinearity
-- the relationship between computation, information, and complex systems
+1. **Ingest** a CSV or Excel file of time-series data (signal columns, a condition/group
+   column, and optional metadata like subject ID or trial).
+2. **Summarize** each signal by condition (mean, std, min, max, median).
+3. **Compute complexity metrics** per condition — sample entropy, spectral entropy, and a DFA
+   (detrended fluctuation analysis) scaling exponent — restricted to whichever metrics the
+   active domain profile recommends.
+4. **Interpret domain-aware**: each domain profile supplies a guiding analysis question,
+   descriptions of signal roles (primary signal / condition / covariate), and
+   metric-specific interpretation text. The generated report uses these to explain *why* a
+   higher or lower value matters for that domain, rather than just printing numbers.
+5. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`, and a human-readable
+   `report.md` to an output directory.
+
+Domain profiles (`physiology`, `cognitive`, `stress`, `attention`, and any custom ones you
+add) live in `config/domain_profiles.yaml` (or `.json`) and can be extended or overridden
+without touching Python code.
 
 ## Repository structure
 
 ```text
 complexity-engine/
 ├── README.md
-├── papers/
-│   └── references.bib
-└── .git/
+├── run_analysis.py                  # CLI entry point
+├── requirements.txt
+├── complexity_engine/
+│   ├── analysis.py                  # ingestion, stats, report generation
+│   ├── domain_profiles.py           # domain profile registry + YAML/JSON loading
+│   └── metrics.py                   # sample entropy, spectral entropy, DFA exponent
+├── config/
+│   ├── domain_profiles.yaml         # user-facing domain definitions
+│   └── domain_profiles.json
+├── data/
+│   └── physio_example.csv           # sample dataset for the physiology/attention domains
+├── outputs/                         # generated CSV summaries + report.md
+├── tests/                           # pytest suite for metrics, domains, and analysis
+└── papers/
+    └── references.bib               # curated complexity science / information theory / cognitive science bibliography
+```
+
+## Running it
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+python run_analysis.py \
+  --data data/physio_example.csv \
+  --signal-cols signal \
+  --condition-col condition \
+  --domain attention \
+  --domain-config config/domain_profiles.yaml \
+  --output-dir outputs
+```
+
+Run the test suite with:
+
+```bash
+python -m pytest -q
 ```
 
 ## Literature base
 
-The project includes a curated bibliography in `papers/references.bib` covering:
+`papers/references.bib` contains a curated bibliography covering:
 
 - information theory and entropy
 - cybernetics and systems theory
 - complexity science and emergence
-- network science
-- self-organization and adaptation
-- foundational and secondary literature
+- network science, self-organization, and adaptation
+- cognitive science, neuroscience, and Bayesian/information-based cognition
 
-This bibliography is a working reference set for future reading, annotation, and research synthesis.
+This is the theoretical grounding for the domain profiles and interpretation text used by the
+analysis pipeline above.
 
-## Notes
+## Design principles
 
-This repository is intentionally minimal and extensible. It is designed to support:
-
-- literature reviews
-- concept mapping
-- model prototyping
-- notes on systems and information relationships
-- future research artifacts
+- **Narrow and reproducible over broad and abstract.** The pipeline targets time-series data
+  with a condition/group comparison rather than trying to be a general-purpose stats package.
+- **Domain-aware, not domain-hardcoded.** Adding or refining a scientific domain (its expected
+  columns, relevant metrics, and interpretation language) is a config change, not a code change.
+- **Explain, don't just compute.** Every complexity metric in a report is paired with what it
+  means and why it's relevant to that domain's guiding question.
 
 ## Suggested next steps
 
-- review the bibliography and identify a core reading set
-- annotate key papers by theme, method, and relevance
-- add notes or summaries in a dedicated docs or notes directory
-- expand the project with computational experiments, models, or analysis scripts
+- support multi-signal reports that group interpretation by signal and add cross-signal
+  metrics (e.g. mutual information)
+- surface missing-expected-column warnings programmatically, not just in the report text
+- expand the domain profile library and cross-reference profiles with the bibliography
