@@ -40,13 +40,13 @@ def test_unknown_domain_rejected(tmp_path):
         pass
 
 
-def test_extended_domain_metadata_is_available():
+def test_extended_domain_metadata_is_available(tmp_path):
     profile = analyze_dataset(
         __import__("pathlib").Path("data/physio_example.csv"),
         signal_cols=["signal"],
         condition_col="condition",
         domain="physiology",
-        output_dir="outputs",
+        output_dir=tmp_path / "outputs",
     )["domain_profile"]
 
     assert "expected_columns" in profile
