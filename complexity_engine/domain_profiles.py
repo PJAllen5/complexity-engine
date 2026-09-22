@@ -83,6 +83,12 @@ def physiology_profile() -> DomainProfile:
                 "to a subject's own baseline rather than the absolute value alone, since scale-free "
                 'fluctuation patterns are common in healthy physiological systems.'
             ),
+            "mutual_information": (
+                'Mutual information between physiological signals reflects how tightly two subsystems are '
+                'coupled through shared regulatory feedback (Ashby, 1956; Wiener, 1948); rising coupling '
+                'under a condition can indicate coordinated regulation, while falling coupling can indicate '
+                'the subsystems regulating more independently.'
+            ),
         },
     )
 
@@ -117,6 +123,12 @@ def cognitive_profile() -> DomainProfile:
                 'rather than momentary reactivity (Hopfield, 1982; Rumelhart et al., 1986); a shift toward '
                 'stronger persistence is more consistent with the system settling into a constrained, '
                 'attractor-like processing mode than with becoming more "flexible."'
+            ),
+            "mutual_information": (
+                'Mutual information across cognitive or neural signals indexes functional integration '
+                'between distributed processing streams (Rumelhart et al., 1986); increasing coupling '
+                'under task demands is consistent with binding separate processes into a coordinated '
+                'response, while decreasing coupling suggests more independent, modular processing.'
             ),
         },
     )

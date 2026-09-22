@@ -140,3 +140,66 @@ def test_cognitive_and_attention_interpretation_cites_predictive_processing(tmp_
         )
         report = (tmp_path / "outputs" / domain / "report.md").read_text(encoding="utf-8")
         assert "Friston, 2010" in report
+
+
+def _write_two_signal_csv(tmp_path):
+    # signal_b uses a distinct (non-affine) pattern from signal_a so their entropy/DFA
+    # metrics don't coincidentally match (these metrics are scale-invariant, so a signal
+    # that's just a scaled/shifted copy of another would produce identical values).
+    rest_a = [1.0, 1.1, 1.0, 1.05] * 5
+    task_a = [1.0, 5.0, 2.0, 8.0, 1.5, 6.0, 2.5, 9.0] * 3
+    rest_b = [2.0, 2.05, 2.15, 2.0, 2.1] * 4
+    task_b = [4.0, 1.0, 3.5, 0.5, 4.5, 1.5, 3.0, 0.8] * 3
+
+    df = pd.DataFrame(
+        {
+            "subject_id": ["s1"] * len(rest_a) + ["s2"] * len(task_a),
+            "condition": ["rest"] * len(rest_a) + ["task"] * len(task_a),
+            "signal_a": rest_a + task_a,
+            "signal_b": rest_b + task_b,
+        }
+    )
+    csv_path = tmp_path / "two_signal.csv"
+    df.to_csv(csv_path, index=False)
+    return csv_path
+
+
+def test_multi_signal_report_groups_interpretation_by_signal(tmp_path):
+    csv_path = _write_two_signal_csv(tmp_path)
+
+    result = analyze_dataset(
+        csv_path,
+        signal_cols=["signal_a", "signal_b"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    assert "cross_signal_summary" in result
+    assert not result["cross_signal_summary"].empty
+    assert (tmp_path / "outputs" / "cross_signal_summary.csv").exists()
+
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "### signal_a" in report
+    assert "### signal_b" in report
+    assert "## Cross-signal metrics" in report
+    assert "### Cross-signal relationships" in report
+    assert "mutual_information" in report
+
+
+def test_single_signal_report_has_no_cross_signal_section(tmp_path):
+    csv_path = _write_signal_csv(tmp_path, [1.0, 2.0, 1.5, 2.5], [10.0, 12.0, 9.0, 11.0])
+
+    result = analyze_dataset(
+        csv_path,
+        signal_cols=["signal"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    assert result["cross_signal_summary"].empty
+
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "Cross-signal" not in report
+    assert "### signal" not in report
