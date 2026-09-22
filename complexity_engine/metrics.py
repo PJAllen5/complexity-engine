@@ -112,6 +112,29 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
     return float(slope)
 
 
+def mutual_information(x: np.ndarray, y: np.ndarray, bins: int = 8) -> float:
+    """Estimate mutual information (in bits) between two equal-length signals via histogram binning.
+
+    Mutual information quantifies how much knowing one signal reduces uncertainty about the
+    other; 0 means the signals appear independent at this binning resolution.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if x.size < 4 or x.size != y.size:
+        return 0.0
+    if np.ptp(x) == 0 or np.ptp(y) == 0:
+        return 0.0
+
+    joint_hist, _, _ = np.histogram2d(x, y, bins=bins)
+    joint_prob = joint_hist / joint_hist.sum()
+    x_prob = joint_prob.sum(axis=1)
+    y_prob = joint_prob.sum(axis=0)
+    outer = np.outer(x_prob, y_prob)
+
+    mask = joint_prob > 0
+    return float(np.sum(joint_prob[mask] * np.log2(joint_prob[mask] / outer[mask])))
+
+
 _METRIC_FUNCTIONS = {
     "sample_entropy": lambda signal: sample_entropy(signal, m=2, r=0.2),
     "spectral_entropy": spectral_entropy,

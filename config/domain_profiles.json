@@ -13,7 +13,8 @@
     "interpretation_rules": {
       "sample_entropy": "Allostatic accounts of stress treat a healthy system as one that can modulate its regulatory range on demand (Wiener, 1948); a rise in entropy from a tightly regulated baseline is consistent with a shift into a more reactive state, while a baseline that fails to show this contrast may indicate reduced regulatory flexibility rather than resilience.",
       "spectral_entropy": "Broader frequency dispersion under stress-related conditions is consistent with the recruitment of additional physiological subsystems (Ashby, 1956); a narrow, single-rhythm spectrum at baseline that persists under stress may indicate the system is not adaptively engaging alternate regulatory pathways.",
-      "dfa_exponent": "Shifts in the DFA exponent away from a subject's own baseline reflect changes in how history-dependent the signal's fluctuations are (Bak, 1996; Jensen, 2007); treat this as a marker of altered regulatory dynamics under stress, not as a direct measure of how \"complex\" or \"healthy\" the system is."
+      "dfa_exponent": "Shifts in the DFA exponent away from a subject's own baseline reflect changes in how history-dependent the signal's fluctuations are (Bak, 1996; Jensen, 2007); treat this as a marker of altered regulatory dynamics under stress, not as a direct measure of how \"complex\" or \"healthy\" the system is.",
+      "mutual_information": "Under an allostatic framing, physiological subsystems that recruit together under stress should show increased mutual information as they come under shared regulatory control (Wiener, 1948); persistently low coupling across conditions may indicate the signals are not part of the same stress-response pathway."
     }
   },
   "attention": {
@@ -30,7 +31,8 @@
     "interpretation_rules": {
       "sample_entropy": "Attention can be framed as precision-weighting of expected sensory or task-relevant signals (Friston, 2010; Clark, 2013; Hohwy, 2013); reduced entropy when attention is engaged is consistent with tighter predictive precision around the task, while elevated entropy may reflect divided attention or reduced top-down control rather than richer processing.",
       "spectral_entropy": "A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.",
-      "dfa_exponent": "Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity."
+      "dfa_exponent": "Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity.",
+      "mutual_information": "Under a predictive-processing account, attention coordinates precision-weighting across signals (Friston, 2010); increased mutual information when attention is engaged is consistent with shared top-down control linking the signals, while decreased coupling suggests they are being processed more independently."
     }
   }
 }

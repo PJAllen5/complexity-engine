@@ -12,18 +12,22 @@ that foundation.
 
 ## What it does today
 
-1. **Ingest** a CSV or Excel file of time-series data (signal columns, a condition/group
-   column, and optional metadata like subject ID or trial).
+1. **Ingest** a CSV or Excel file of time-series data (one or more signal columns, a
+   condition/group column, and optional metadata like subject ID or trial).
 2. **Summarize** each signal by condition (mean, std, min, max, median).
 3. **Compute complexity metrics** per condition — sample entropy, spectral entropy, and a DFA
    (detrended fluctuation analysis) scaling exponent — restricted to whichever metrics the
    active domain profile recommends.
-4. **Interpret domain-aware**: each domain profile supplies a guiding analysis question,
+4. **Compute cross-signal coupling**: when more than one signal column is selected, pairwise
+   mutual information is computed per condition, capturing how tightly signals are coupled.
+5. **Interpret domain-aware**: each domain profile supplies a guiding analysis question,
    descriptions of signal roles (primary signal / condition / covariate), and
-   metric-specific interpretation text. The generated report uses these to explain *why* a
-   higher or lower value matters for that domain, rather than just printing numbers.
-5. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`, and a human-readable
-   `report.md` to an output directory.
+   metric-specific interpretation text (including for cross-signal coupling). The generated
+   report uses these to explain *why* a higher or lower value matters for that domain, rather
+   than just printing numbers. With multiple signals, the interpretation is grouped into a
+   subsection per signal plus a cross-signal relationships subsection.
+6. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`,
+   `cross_signal_summary.csv`, and a human-readable `report.md` to an output directory.
 
 Domain profiles (`physiology`, `cognitive`, `stress`, `attention`, and any custom ones you
 add) live in `config/domain_profiles.yaml` (or `.json`) and can be extended or overridden
@@ -39,7 +43,7 @@ complexity-engine/
 ├── complexity_engine/
 │   ├── analysis.py                  # ingestion, stats, report generation
 │   ├── domain_profiles.py           # domain profile registry + YAML/JSON loading
-│   └── metrics.py                   # sample entropy, spectral entropy, DFA exponent
+│   └── metrics.py                   # sample entropy, spectral entropy, DFA exponent, mutual information
 ├── config/
 │   ├── domain_profiles.yaml         # user-facing domain definitions
 │   └── domain_profiles.json
@@ -96,7 +100,7 @@ analysis pipeline above.
 
 ## Suggested next steps
 
-- support multi-signal reports that group interpretation by signal and add cross-signal
-  metrics (e.g. mutual information)
 - surface missing-expected-column warnings programmatically, not just in the report text
 - expand the domain profile library and cross-reference profiles with the bibliography
+- explore network-based metrics (degree, clustering, modularity) for data shaped as a network
+  rather than parallel time series
