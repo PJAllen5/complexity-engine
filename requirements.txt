@@ -4,5 +4,6 @@ scipy
 matplotlib
 seaborn
 networkx
+markdown
 pytest
 PyYAML

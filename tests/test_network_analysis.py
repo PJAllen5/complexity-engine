@@ -249,3 +249,19 @@ def test_analyze_network_detects_but_does_not_drop_duplicate_edges(tmp_path):
 
     assert result["provenance"]["duplicate_rows_detected"] == 1
     assert result["provenance"]["output_rows"] == 3  # not dropped
+
+
+def test_analyze_network_writes_self_contained_html_report(tmp_path):
+    csv_path = _write_edge_csv(
+        tmp_path,
+        [{"source": "a", "target": "b"}, {"source": "b", "target": "c"}, {"source": "c", "target": "a"}],
+    )
+
+    result = analyze_network(csv_path, condition_col=None, output_dir=tmp_path / "outputs")
+
+    html_path = Path(result["report_html"])
+    assert html_path.exists()
+    assert html_path == tmp_path / "outputs" / "report.html"
+    html = html_path.read_text(encoding="utf-8")
+    assert "<h1>Network Analysis Report</h1>" in html
+    assert "data:image/png;base64," in html

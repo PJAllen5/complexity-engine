@@ -43,8 +43,9 @@ built on that foundation.
    chart per signal, plus a mutual-information heatmap when multiple signals are selected —
    saved as PNGs under `outputs/plots/` and embedded in `report.md`.
 9. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`,
-   `significance_summary.csv`, `cross_signal_summary.csv`, the plot PNGs, and a human-readable
-   `report.md` to an output directory.
+   `significance_summary.csv`, `cross_signal_summary.csv`, the plot PNGs, a human-readable
+   `report.md`, and a self-contained `report.html` (same content, styled, with the plots
+   base64-inlined into the single file) to an output directory.
 
 Domain profiles for this pipeline (`physiology`, `cognitive`, `stress`, `attention`, and any
 custom ones you add) live in `config/domain_profiles.yaml` (or `.json`) and can be extended or
@@ -87,7 +88,7 @@ parallel pipeline:
    bibliography: small-world structure (Watts & Strogatz, 1998), scale-free/hub structure
    (Barabási & Albert, 1999), and community/modularity structure (Newman, 2010).
 8. **Report**: writes `network_metrics_summary.csv`, optionally `node_centrality.csv`, the
-   degree-distribution PNG, and a `report.md`.
+   degree-distribution PNG, a `report.md`, and a self-contained `report.html`.
 
 This is a genuinely different data shape from the time-series pipeline (rows are edges, not
 observations), so it's kept as its own entry point (`network_analysis.py` /
@@ -103,13 +104,15 @@ complexity-engine/
 ├── run_analysis.py                  # time-series CLI entry point
 ├── run_network_analysis.py          # network CLI entry point
 ├── requirements.txt
+├── requirements-dev.txt             # + validation-only deps (antropy, nolds, scikit-learn)
 ├── complexity_engine/
 │   ├── analysis.py                  # time-series ingestion, stats, report generation
 │   ├── domain_profiles.py           # domain profile registry + YAML/JSON loading (shared)
 │   ├── metrics.py                   # sample entropy, spectral entropy, DFA exponent, mutual information, condition comparison
 │   ├── network_analysis.py          # network ingestion, report generation
 │   ├── network_metrics.py           # density, clustering, modularity, path length, ...
-│   └── plots.py                     # all plot generation, both pipelines
+│   ├── plots.py                     # all plot generation, both pipelines
+│   └── report_export.py             # self-contained HTML export, both pipelines
 ├── config/
 │   ├── domain_profiles.yaml         # user-facing domain definitions, both pipelines
 │   └── domain_profiles.json

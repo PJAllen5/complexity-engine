@@ -346,3 +346,22 @@ def test_analyze_dataset_reports_provenance(tmp_path):
     assert "## Data provenance" in report
     assert "Input rows: 4" in report
     assert "Rows analyzed: 3" in report
+
+
+def test_analyze_dataset_writes_self_contained_html_report(tmp_path):
+    csv_path = _write_signal_csv(tmp_path, [1.0, 2.0, 1.5, 2.5], [10.0, 12.0, 9.0, 11.0])
+
+    result = analyze_dataset(
+        csv_path,
+        signal_cols=["signal"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    html_path = Path(result["report_html"])
+    assert html_path.exists()
+    assert html_path == tmp_path / "outputs" / "report.html"
+    html = html_path.read_text(encoding="utf-8")
+    assert "<h1>Complexity Analysis Report</h1>" in html
+    assert "data:image/png;base64," in html

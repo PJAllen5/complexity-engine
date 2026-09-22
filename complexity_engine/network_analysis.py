@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .analysis import _describe_data_source, clean_dataset, load_dataset
+from .analysis import _as_code_block, _collapse_blank_lines, _describe_data_source, clean_dataset, load_dataset
 from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
 from .network_metrics import (
     NETWORK_METRIC_KEYS,
@@ -24,6 +24,7 @@ from .network_metrics import (
     compute_small_world_metrics,
 )
 from .plots import plot_degree_distribution
+from .report_export import export_html_report
 
 _SMALL_WORLD_METRICS = ("small_world_sigma", "small_world_omega")
 
@@ -217,14 +218,17 @@ def analyze_network(
             "compare against randomized reference graphs and aren't well-defined otherwise."
         )
         report_lines.append("")
-    report_lines.extend(["## Network metrics", metrics_df.to_string(index=False), ""])
+    report_lines.append("## Network metrics")
+    report_lines.extend(_as_code_block(metrics_df.to_string(index=False)))
     if compute_centrality and not centrality_df.empty:
-        report_lines.extend(["## Node centrality", centrality_df.to_string(index=False), ""])
+        report_lines.append("## Node centrality")
+        report_lines.extend(_as_code_block(centrality_df.to_string(index=False)))
     if degree_plot_path:
         report_lines.extend(["## Visualizations", f"![degree_distribution](plots/{Path(degree_plot_path).name})", ""])
     report_lines.extend(_generate_network_interpretation_lines(metrics_df, domain_profile))
-    report_lines = [line for line in report_lines if line]
+    report_lines = _collapse_blank_lines(report_lines)
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
+    html_path = export_html_report(report_path)
 
     return {
         "data": df,
@@ -238,4 +242,5 @@ def analyze_network(
         "centrality_csv": str(centrality_path) if centrality_path else None,
         "degree_plot_path": degree_plot_path,
         "report_md": str(report_path),
+        "report_html": html_path,
     }

@@ -63,6 +63,7 @@ def main() -> None:
     if result["centrality_csv"]:
         print(f"Saved node centrality to: {result['centrality_csv']}")
     print(f"Saved report to: {result['report_md']}")
+    print(f"Saved self-contained HTML report to: {result['report_html']}")
 
 
 if __name__ == "__main__":
