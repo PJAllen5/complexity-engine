@@ -131,7 +131,9 @@ python -m pytest -q
 - cognitive science, neuroscience, and Bayesian/information-based cognition
 
 This is the theoretical grounding for the domain profiles and interpretation text used by
-both pipelines above.
+both pipelines above. Every inline citation in that text (e.g. "(Friston, 2010)") is checked
+against this file by `tests/test_citation_integrity.py`, so a citation can't silently drift
+out of sync with the bibliography (wrong year, removed entry, typo'd author).
 
 ## Design principles
 
