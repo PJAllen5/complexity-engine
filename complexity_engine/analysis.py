@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-from .domain_profiles import get_domain_profile, load_domain_profiles
+from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles
 from .metrics import compute_complexity_metrics, descriptive_stats
+
+_DEFAULT_METRIC_EXPLANATIONS = {
+    "sample_entropy": "Sample entropy captures temporal irregularity; higher values suggest more unpredictability.",
+    "spectral_entropy": "Spectral entropy captures the distribution of frequency content; higher values suggest broader frequency activity.",
+    "dfa_exponent": "DFA exponent estimates long-range correlation structure; values near 0.5 often indicate random-like structure, while higher values suggest stronger persistence.",
+}
 
 _METADATA_COLUMNS = {
     "subject_id",
@@ -59,10 +67,15 @@ def summarize_condition(df: pd.DataFrame, signal_col: str, condition_col: str = 
     return summary.rename(columns={"mean": "mean_signal", "std": "std_signal", "min": "min_signal", "max": "max_signal"})
 
 
-def condition_complexity_summary(df: pd.DataFrame, signal_col: str, condition_col: str = "condition") -> pd.DataFrame:
+def condition_complexity_summary(
+    df: pd.DataFrame,
+    signal_col: str,
+    condition_col: str = "condition",
+    metrics: Sequence[str] | None = None,
+) -> pd.DataFrame:
     records = []
     for condition, group in df.groupby(condition_col, dropna=False):
-        metrics = compute_complexity_metrics(group[signal_col].to_numpy(dtype=float))
+        complexity = compute_complexity_metrics(group[signal_col].to_numpy(dtype=float), metrics=metrics)
         desc = descriptive_stats(group[signal_col].to_numpy(dtype=float))
         records.append(
             {
@@ -70,20 +83,29 @@ def condition_complexity_summary(df: pd.DataFrame, signal_col: str, condition_co
                 "signal": signal_col,
                 "n_samples": int(group.shape[0]),
                 **desc,
-                **metrics,
+                **complexity,
             }
         )
     return pd.DataFrame.from_records(records)
 
 
-def _generate_interpretation_lines(complexity_df: pd.DataFrame) -> list[str]:
-    lines = [
-        "## Interpretation",
-        "- Sample entropy captures temporal irregularity; higher values suggest more unpredictability.",
-        "- Spectral entropy captures the distribution of frequency content; higher values suggest broader frequency activity.",
-        "- DFA exponent estimates long-range correlation structure; values near 0.5 often indicate random-like structure, while higher values suggest stronger persistence.",
-        "",
-    ]
+def _missing_expected_columns(df: pd.DataFrame, domain_profile: DomainProfile) -> list[str]:
+    return [col for col in domain_profile.expected_columns if col not in df.columns]
+
+
+def _generate_interpretation_lines(complexity_df: pd.DataFrame, domain_profile: DomainProfile) -> list[str]:
+    lines = ["## Interpretation", ""]
+    if domain_profile.analysis_question:
+        lines.append(f"Guiding question: {domain_profile.analysis_question}")
+        lines.append("")
+
+    metrics_of_interest = list(domain_profile.recommended_metrics) or list(_DEFAULT_METRIC_EXPLANATIONS)
+    for metric in metrics_of_interest:
+        explanation = domain_profile.interpretation_rules.get(metric) or _DEFAULT_METRIC_EXPLANATIONS.get(metric)
+        if explanation:
+            lines.append(f"- {metric}: {explanation}")
+    lines.append("")
+
     if complexity_df.empty:
         return lines
 
@@ -93,12 +115,19 @@ def _generate_interpretation_lines(complexity_df: pd.DataFrame) -> list[str]:
             continue
         first = signal_rows.iloc[0]
         second = signal_rows.iloc[-1]
-        first_se = float(first["sample_entropy"])
-        second_se = float(second["sample_entropy"])
-        direction = "higher" if second_se > first_se else "lower"
-        lines.append(
-            f"- For {signal}, sample entropy is {direction} in {second['condition']} than in {first['condition']}, suggesting a change in temporal irregularity or predictability."
-        )
+        for metric in metrics_of_interest:
+            if metric not in signal_rows.columns:
+                continue
+            first_val = float(first[metric])
+            second_val = float(second[metric])
+            if np.isnan(first_val) or np.isnan(second_val) or first_val == second_val:
+                continue
+            direction = "higher" if second_val > first_val else "lower"
+            rule = domain_profile.interpretation_rules.get(metric, "")
+            metric_label = metric.replace("_", " ")
+            lines.append(
+                f"- For {signal}, {metric_label} is {direction} in {second['condition']} than in {first['condition']}. {rule}".rstrip()
+            )
     return lines
 
 
@@ -115,6 +144,7 @@ def analyze_dataset(
     domain_profile = get_domain_profile(domain)
     df = load_dataset(data_path)
     selected_signals = resolve_signal_columns(df, signal_cols=signal_cols if signal_cols is not None else signal_col)
+    missing_columns = _missing_expected_columns(df, domain_profile)
 
     summary_frames = []
     complexity_frames = []
@@ -122,7 +152,14 @@ def analyze_dataset(
         if signal not in df.columns:
             raise ValueError(f"Signal column '{signal}' was not found in the dataset.")
         summary_frames.append(summarize_condition(df, signal_col=signal, condition_col=condition_col).assign(signal=signal))
-        complexity_frames.append(condition_complexity_summary(df, signal_col=signal, condition_col=condition_col))
+        complexity_frames.append(
+            condition_complexity_summary(
+                df,
+                signal_col=signal,
+                condition_col=condition_col,
+                metrics=domain_profile.recommended_metrics or None,
+            )
+        )
 
     summary = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
     complexity = pd.concat(complexity_frames, ignore_index=True) if complexity_frames else pd.DataFrame()
@@ -141,21 +178,35 @@ def analyze_dataset(
         "",
         f"- Domain: {domain_profile.name}",
         f"- Domain description: {domain_profile.description}",
+        f"- Analysis question: {domain_profile.analysis_question}" if domain_profile.analysis_question else "",
         f"- Data source: {Path(data_path).name}",
         f"- Signal columns: {', '.join(selected_signals)}",
         f"- Condition column: {condition_col}",
         "",
-        "## Condition summary",
-        summary.to_string(index=False),
-        "",
-        "## Complexity metrics",
-        complexity.to_string(index=False),
-        "",
     ]
-    report_lines.extend(_generate_interpretation_lines(complexity))
-    report_lines.append("### Domain interpretation rules")
-    for metric, rule in domain_profile.interpretation_rules.items():
-        report_lines.append(f"- {metric}: {rule}")
+    if domain_profile.signal_roles:
+        report_lines.append("## Domain signal roles")
+        for role, description in domain_profile.signal_roles.items():
+            report_lines.append(f"- {role}: {description}")
+        report_lines.append("")
+    if missing_columns:
+        report_lines.append(
+            f"Note: the '{domain_profile.name}' domain profile expects columns "
+            f"[{', '.join(domain_profile.expected_columns)}]; missing from this dataset: {', '.join(missing_columns)}."
+        )
+        report_lines.append("")
+    report_lines.extend(
+        [
+            "## Condition summary",
+            summary.to_string(index=False),
+            "",
+            "## Complexity metrics",
+            complexity.to_string(index=False),
+            "",
+        ]
+    )
+    report_lines.extend(_generate_interpretation_lines(complexity, domain_profile))
+    report_lines = [line for line in report_lines if line]
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
 
     return {

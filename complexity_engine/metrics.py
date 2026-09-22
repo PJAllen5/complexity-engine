@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 
@@ -110,10 +112,23 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
     return float(slope)
 
 
-def compute_complexity_metrics(signal: np.ndarray) -> dict[str, float]:
+_METRIC_FUNCTIONS = {
+    "sample_entropy": lambda signal: sample_entropy(signal, m=2, r=0.2),
+    "spectral_entropy": spectral_entropy,
+    "dfa_exponent": dfa_exponent,
+}
+
+
+def compute_complexity_metrics(signal: np.ndarray, metrics: Sequence[str] | None = None) -> dict[str, float]:
+    """Compute complexity metrics for a signal.
+
+    If `metrics` is omitted, every supported metric is computed. Pass an explicit
+    subset (e.g. a domain profile's `recommended_metrics`) to compute only those.
+    """
     signal = np.asarray(signal, dtype=float)
-    return {
-        "sample_entropy": float(sample_entropy(signal, m=2, r=0.2)),
-        "spectral_entropy": float(spectral_entropy(signal)),
-        "dfa_exponent": float(dfa_exponent(signal)),
-    }
+    selected = tuple(metrics) if metrics else tuple(_METRIC_FUNCTIONS)
+    unknown = [name for name in selected if name not in _METRIC_FUNCTIONS]
+    if unknown:
+        supported = ", ".join(sorted(_METRIC_FUNCTIONS))
+        raise ValueError(f"Unknown complexity metric(s): {', '.join(unknown)}. Supported metrics: {supported}.")
+    return {name: float(_METRIC_FUNCTIONS[name](signal)) for name in selected}
