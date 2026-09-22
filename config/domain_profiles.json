@@ -1,0 +1,36 @@
+{
+  "stress": {
+    "name": "stress",
+    "description": "Stress-monitoring profile for physiological time-series and task-induced variation.",
+    "analysis_question": "Does the monitored signal show elevated variability or altered temporal structure under stress-related conditions?",
+    "recommended_metrics": ["sample_entropy", "spectral_entropy", "dfa_exponent"],
+    "expected_columns": ["signal", "condition", "subject_id"],
+    "signal_roles": {
+      "primary_signal": "Main physiological signal used to estimate stress-related dynamics.",
+      "condition": "Task or context label used to compare stress and baseline states.",
+      "covariate": "Optional metadata such as participant, session, or clinical notes."
+    },
+    "interpretation_rules": {
+      "sample_entropy": "Higher values may indicate greater physiological variability and reduced predictability under stress.",
+      "spectral_entropy": "Broader frequency structure may indicate distributed physiological activation or challenge responses.",
+      "dfa_exponent": "DFA exponent captures temporal persistence; shifts away from baseline may reflect changing regulatory dynamics."
+    }
+  },
+  "attention": {
+    "name": "attention",
+    "description": "Cognitive attention profile for task-driven dynamics and adaptive control.",
+    "analysis_question": "Does the monitored signal show greater organization or flexibility when attention is engaged by the task?",
+    "recommended_metrics": ["sample_entropy", "spectral_entropy", "dfa_exponent"],
+    "expected_columns": ["signal", "condition", "trial"],
+    "signal_roles": {
+      "primary_signal": "Main cognitive or neural signal associated with attentional state.",
+      "condition": "Task phase, condition, or experimental state used for comparison.",
+      "covariate": "Optional trial-level, session-level, or participant metadata."
+    },
+    "interpretation_rules": {
+      "sample_entropy": "Higher entropy can indicate flexible attention allocation and less predictable task dynamics.",
+      "spectral_entropy": "Higher spectral entropy may indicate broader engagement or more distributed processing.",
+      "dfa_exponent": "Changes in DFA exponent can signal different forms of temporal coordination during attentional demands."
+    }
+  }
+}
