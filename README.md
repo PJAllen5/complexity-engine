@@ -18,16 +18,20 @@ that foundation.
 3. **Compute complexity metrics** per condition — sample entropy, spectral entropy, and a DFA
    (detrended fluctuation analysis) scaling exponent — restricted to whichever metrics the
    active domain profile recommends.
-4. **Compute cross-signal coupling**: when more than one signal column is selected, pairwise
+4. **Test statistical significance** between every pair of conditions on the raw signal
+   (Welch's t-test + Cohen's d effect size), so directional differences can be read alongside
+   whether they're distinguishable from sampling noise.
+5. **Compute cross-signal coupling**: when more than one signal column is selected, pairwise
    mutual information is computed per condition, capturing how tightly signals are coupled.
-5. **Interpret domain-aware**: each domain profile supplies a guiding analysis question,
+6. **Interpret domain-aware**: each domain profile supplies a guiding analysis question,
    descriptions of signal roles (primary signal / condition / covariate), and
    metric-specific interpretation text (including for cross-signal coupling). The generated
    report uses these to explain *why* a higher or lower value matters for that domain, rather
    than just printing numbers. With multiple signals, the interpretation is grouped into a
    subsection per signal plus a cross-signal relationships subsection.
-6. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`,
-   `cross_signal_summary.csv`, and a human-readable `report.md` to an output directory.
+7. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`,
+   `significance_summary.csv`, `cross_signal_summary.csv`, and a human-readable `report.md` to
+   an output directory.
 
 Domain profiles (`physiology`, `cognitive`, `stress`, `attention`, and any custom ones you
 add) live in `config/domain_profiles.yaml` (or `.json`) and can be extended or overridden
@@ -43,7 +47,7 @@ complexity-engine/
 ├── complexity_engine/
 │   ├── analysis.py                  # ingestion, stats, report generation
 │   ├── domain_profiles.py           # domain profile registry + YAML/JSON loading
-│   └── metrics.py                   # sample entropy, spectral entropy, DFA exponent, mutual information
+│   └── metrics.py                   # sample entropy, spectral entropy, DFA exponent, mutual information, condition comparison
 ├── config/
 │   ├── domain_profiles.yaml         # user-facing domain definitions
 │   └── domain_profiles.json
@@ -100,7 +104,8 @@ analysis pipeline above.
 
 ## Suggested next steps
 
-- surface missing-expected-column warnings programmatically, not just in the report text
 - expand the domain profile library and cross-reference profiles with the bibliography
 - explore network-based metrics (degree, clustering, modularity) for data shaped as a network
   rather than parallel time series
+- generate plots (raw signal traces, metric comparisons, mutual-information heatmaps) alongside
+  the CSV/Markdown output

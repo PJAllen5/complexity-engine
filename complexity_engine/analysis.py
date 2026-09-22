@@ -10,7 +10,17 @@ import numpy as np
 import pandas as pd
 
 from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles
-from .metrics import compute_complexity_metrics, descriptive_stats, mutual_information
+from .metrics import compare_conditions, compute_complexity_metrics, descriptive_stats, mutual_information
+
+_SIGNIFICANCE_ALPHA = 0.05
+
+_SIGNIFICANCE_EXPLANATION = (
+    "Welch's t-test checks whether the raw signal's mean level differs between two conditions "
+    "beyond what sampling variability alone would produce; Cohen's d expresses the size of that "
+    "difference in standard-deviation units (roughly: ~0.2 small, ~0.5 medium, ~0.8 large). This "
+    "tests the raw signal, not the complexity metrics above, which are single summary values per "
+    "condition rather than per-sample distributions."
+)
 
 _DEFAULT_METRIC_EXPLANATIONS = {
     "sample_entropy": "Sample entropy captures temporal irregularity; higher values suggest more unpredictability.",
@@ -104,6 +114,33 @@ def condition_complexity_summary(
     return pd.DataFrame.from_records(records)
 
 
+def condition_significance_summary(
+    df: pd.DataFrame,
+    signal_col: str,
+    condition_col: str = "condition",
+) -> pd.DataFrame:
+    """Compare the raw signal between every pair of conditions with Welch's t-test + Cohen's d."""
+    records = []
+    conditions = sorted(df[condition_col].dropna().unique(), key=str)
+    for condition_a, condition_b in itertools.combinations(conditions, 2):
+        values_a = df.loc[df[condition_col] == condition_a, signal_col].to_numpy(dtype=float)
+        values_b = df.loc[df[condition_col] == condition_b, signal_col].to_numpy(dtype=float)
+        comparison = compare_conditions(values_a, values_b)
+        records.append(
+            {
+                "signal": signal_col,
+                "condition_a": condition_a,
+                "condition_b": condition_b,
+                "n_a": values_a.size,
+                "n_b": values_b.size,
+                "mean_a": float(np.mean(values_a)) if values_a.size else np.nan,
+                "mean_b": float(np.mean(values_b)) if values_b.size else np.nan,
+                **comparison,
+            }
+        )
+    return pd.DataFrame.from_records(records)
+
+
 def condition_cross_signal_summary(
     df: pd.DataFrame,
     signal_cols: Sequence[str],
@@ -139,10 +176,32 @@ def _missing_expected_columns(df: pd.DataFrame, domain_profile: DomainProfile) -
     return [col for col in domain_profile.expected_columns if col not in df.columns]
 
 
+def _significance_lines_for_signal(signal: str, significance_df: pd.DataFrame | None) -> list[str]:
+    if significance_df is None or significance_df.empty:
+        return []
+    signal_rows = significance_df[significance_df["signal"] == signal]
+    lines = []
+    for _, row in signal_rows.iterrows():
+        p_value = row["p_value"]
+        if np.isnan(p_value):
+            continue
+        condition_a, condition_b = row["condition_a"], row["condition_b"]
+        cohens_d = row["cohens_d"]
+        d_text = f"{cohens_d:.2f}" if not np.isnan(cohens_d) else "n/a"
+        p_text = "p<0.001" if p_value < 0.001 else f"p={p_value:.3f}"
+        verdict = "differs significantly" if p_value < _SIGNIFICANCE_ALPHA else "does not differ significantly"
+        lines.append(
+            f"- Raw signal {verdict} between {condition_a} and {condition_b} "
+            f"(Welch's t-test {p_text}, Cohen's d={d_text})."
+        )
+    return lines
+
+
 def _generate_interpretation_lines(
     complexity_df: pd.DataFrame,
     domain_profile: DomainProfile,
     cross_signal_df: pd.DataFrame | None = None,
+    significance_df: pd.DataFrame | None = None,
 ) -> list[str]:
     lines = ["## Interpretation", ""]
     if domain_profile.analysis_question:
@@ -151,6 +210,10 @@ def _generate_interpretation_lines(
 
     lines.append(_ENTROPY_COMPLEXITY_CAVEAT)
     lines.append("")
+
+    if significance_df is not None and not significance_df.empty:
+        lines.append(_SIGNIFICANCE_EXPLANATION)
+        lines.append("")
 
     metrics_of_interest = list(domain_profile.recommended_metrics) or list(_DEFAULT_METRIC_EXPLANATIONS)
     for metric in metrics_of_interest:
@@ -180,6 +243,7 @@ def _generate_interpretation_lines(
                 signal_lines.append(
                     f"- {metric_label} is {direction} in {second['condition']} than in {first['condition']}. {rule}".rstrip()
                 )
+        signal_lines.extend(_significance_lines_for_signal(signal, significance_df))
         if not signal_lines:
             continue
         if multi_signal:
@@ -228,6 +292,7 @@ def analyze_dataset(
 
     summary_frames = []
     complexity_frames = []
+    significance_frames = []
     for signal in selected_signals:
         if signal not in df.columns:
             raise ValueError(f"Signal column '{signal}' was not found in the dataset.")
@@ -240,9 +305,11 @@ def analyze_dataset(
                 metrics=domain_profile.recommended_metrics or None,
             )
         )
+        significance_frames.append(condition_significance_summary(df, signal_col=signal, condition_col=condition_col))
 
     summary = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
     complexity = pd.concat(complexity_frames, ignore_index=True) if complexity_frames else pd.DataFrame()
+    significance = pd.concat(significance_frames, ignore_index=True) if significance_frames else pd.DataFrame()
     cross_signal = condition_cross_signal_summary(df, selected_signals, condition_col=condition_col)
 
     output_dir = Path(output_dir)
@@ -250,9 +317,11 @@ def analyze_dataset(
 
     summary_path = output_dir / "condition_summary.csv"
     complexity_path = output_dir / "complexity_summary.csv"
+    significance_path = output_dir / "significance_summary.csv"
     cross_signal_path = output_dir / "cross_signal_summary.csv"
     summary.to_csv(summary_path, index=False)
     complexity.to_csv(complexity_path, index=False)
+    significance.to_csv(significance_path, index=False)
     cross_signal.to_csv(cross_signal_path, index=False)
 
     report_path = output_dir / "report.md"
@@ -288,6 +357,14 @@ def analyze_dataset(
             "",
         ]
     )
+    if not significance.empty:
+        report_lines.extend(
+            [
+                "## Statistical significance",
+                significance.to_string(index=False),
+                "",
+            ]
+        )
     if not cross_signal.empty:
         report_lines.extend(
             [
@@ -296,7 +373,9 @@ def analyze_dataset(
                 "",
             ]
         )
-    report_lines.extend(_generate_interpretation_lines(complexity, domain_profile, cross_signal_df=cross_signal))
+    report_lines.extend(
+        _generate_interpretation_lines(complexity, domain_profile, cross_signal_df=cross_signal, significance_df=significance)
+    )
     report_lines = [line for line in report_lines if line]
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
 
@@ -307,9 +386,11 @@ def analyze_dataset(
         "missing_columns": missing_columns,
         "condition_summary": summary,
         "complexity_summary": complexity,
+        "significance_summary": significance,
         "cross_signal_summary": cross_signal,
         "summary_csv": str(summary_path),
         "complexity_csv": str(complexity_path),
+        "significance_csv": str(significance_path),
         "cross_signal_csv": str(cross_signal_path),
         "report_md": str(report_path),
     }

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
+from scipy import stats
 
 
 def descriptive_stats(signal: np.ndarray) -> dict[str, float]:
@@ -110,6 +111,27 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
 
     slope, _ = np.polyfit(log_scales, log_rms, 1)
     return float(slope)
+
+
+def compare_conditions(x: np.ndarray, y: np.ndarray) -> dict[str, float]:
+    """Compare two samples with Welch's t-test and Cohen's d effect size.
+
+    Welch's t-test doesn't assume equal variance between groups, which suits
+    comparing conditions that often differ in variability as well as level.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if x.size < 2 or y.size < 2:
+        return {"t_statistic": np.nan, "p_value": np.nan, "cohens_d": np.nan}
+
+    t_statistic, p_value = stats.ttest_ind(x, y, equal_var=False)
+
+    var_x = np.var(x, ddof=1)
+    var_y = np.var(y, ddof=1)
+    pooled_std = np.sqrt(((x.size - 1) * var_x + (y.size - 1) * var_y) / (x.size + y.size - 2))
+    cohens_d = float((np.mean(x) - np.mean(y)) / pooled_std) if pooled_std > 0 else np.nan
+
+    return {"t_statistic": float(t_statistic), "p_value": float(p_value), "cohens_d": cohens_d}
 
 
 def mutual_information(x: np.ndarray, y: np.ndarray, bins: int = 8) -> float:

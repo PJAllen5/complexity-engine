@@ -231,3 +231,27 @@ def test_missing_columns_is_empty_when_all_expected_columns_present(tmp_path):
     )
 
     assert result["missing_columns"] == []
+
+
+def test_report_includes_statistical_significance(tmp_path):
+    rest_values = [70.0, 71.0, 69.5, 70.5, 70.2] * 4
+    task_values = [90.0, 91.0, 89.5, 90.5, 90.2] * 4
+    csv_path = _write_signal_csv(tmp_path, rest_values, task_values)
+
+    result = analyze_dataset(
+        csv_path,
+        signal_cols=["signal"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    significance = result["significance_summary"]
+    assert not significance.empty
+    assert significance.iloc[0]["p_value"] < 0.001
+    assert (tmp_path / "outputs" / "significance_summary.csv").exists()
+
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "## Statistical significance" in report
+    assert "differs significantly" in report
+    assert "Welch's t-test" in report

@@ -1,0 +1,2 @@
+signal,condition_a,condition_b,n_a,n_b,mean_a,mean_b,t_statistic,p_value,cohens_d
+signal,rest,task,30,30,73.73666666666666,82.79666666666667,-15.394298819712697,6.556482514987134e-18,-3.974790863685851
