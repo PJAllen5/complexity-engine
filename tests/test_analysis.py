@@ -109,3 +109,34 @@ def test_compute_complexity_metrics_rejects_unknown_metric():
 def test_compute_complexity_metrics_defaults_to_all_metrics():
     result = compute_complexity_metrics([1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0])
     assert set(result) == {"sample_entropy", "spectral_entropy", "dfa_exponent"}
+
+
+def test_report_includes_entropy_complexity_caveat(tmp_path):
+    csv_path = _write_signal_csv(tmp_path, [1.0, 2.0, 1.5, 2.5], [10.0, 12.0, 9.0, 11.0])
+
+    analyze_dataset(
+        csv_path,
+        signal_cols=["signal"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "Methodological note" in report
+    assert "Crutchfield & Young, 1989" in report
+
+
+def test_cognitive_and_attention_interpretation_cites_predictive_processing(tmp_path):
+    csv_path = _write_signal_csv(tmp_path, [1.0, 2.0, 1.5, 2.5], [10.0, 12.0, 9.0, 11.0])
+
+    for domain in ("cognitive", "attention"):
+        analyze_dataset(
+            csv_path,
+            signal_cols=["signal"],
+            condition_col="condition",
+            domain=domain,
+            output_dir=tmp_path / "outputs" / domain,
+        )
+        report = (tmp_path / "outputs" / domain / "report.md").read_text(encoding="utf-8")
+        assert "Friston, 2010" in report

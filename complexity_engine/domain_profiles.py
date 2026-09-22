@@ -61,9 +61,28 @@ def physiology_profile() -> DomainProfile:
             "covariate": "Optional metadata such as age, group, session, or clinical variables.",
         },
         interpretation_rules={
-            "sample_entropy": "Higher sample entropy suggests greater temporal irregularity and reduced predictability.",
-            "spectral_entropy": "Higher spectral entropy indicates broader frequency content and a more dispersed signal structure.",
-            "dfa_exponent": "DFA exponent reflects long-range temporal correlation; values near 0.5 indicate more random-like behavior, while larger values suggest stronger persistence.",
+            "sample_entropy": (
+                'Higher sample entropy indicates reduced short-term predictability in the signal. '
+                'Physiological regulation is classically understood as a cybernetic feedback process '
+                '(Wiener, 1948; Ashby, 1956); a healthy regulatory system maintains a flexible operating '
+                'range, so both unusually low entropy (rigid, overly constrained dynamics) and unusually '
+                'high entropy (loss of regulatory control) can indicate impaired adaptability rather than '
+                'simply "more" or "less" complexity.'
+            ),
+            "spectral_entropy": (
+                'A more evenly distributed frequency spectrum means the signal is not dominated by one '
+                'oscillatory rhythm. In feedback-control terms (Ashby, 1956), effective regulation '
+                'typically distributes activity across several feedback timescales rather than a single '
+                'dominant one, so a narrowing spectrum can reflect a collapse toward fewer active '
+                'regulatory pathways.'
+            ),
+            "dfa_exponent": (
+                'The DFA exponent estimates long-range temporal correlation. Values that depart from the '
+                'uncorrelated random-walk baseline (~0.5) suggest history-dependent, self-organized '
+                'fluctuation patterns rather than memoryless noise (Bak, 1996); interpret shifts relative '
+                "to a subject's own baseline rather than the absolute value alone, since scale-free "
+                'fluctuation patterns are common in healthy physiological systems.'
+            ),
         },
     )
 
@@ -74,16 +93,31 @@ def cognitive_profile() -> DomainProfile:
         description="Cognitive and neural time-series analysis focused on signal organization, predictability, and dynamic adjustment to task demands.",
         recommended_metrics=("sample_entropy", "spectral_entropy", "dfa_exponent"),
         expected_columns=("signal", "condition", "trial"),
-        analysis_question="Do cognitive or neural dynamics shift toward greater flexibility, more structure, or stronger temporal regularity under task demands?",
+        analysis_question="Do cognitive or neural dynamics shift toward tighter predictive control, more distributed processing, or stronger temporal structure under task demands?",
         signal_roles={
             "primary_signal": "Main cognitive or neural signal being analyzed.",
             "condition": "Condition, task state, or group labeling used for comparison.",
             "covariate": "Optional covariates such as trial, session, or participant metadata.",
         },
         interpretation_rules={
-            "sample_entropy": "Higher sample entropy can indicate more flexible and less predictable cognitive dynamics.",
-            "spectral_entropy": "Higher spectral entropy suggests broader engagement across frequency bands or less dominant structure.",
-            "dfa_exponent": "DFA exponent helps characterize temporal dependence and long-range structure in task-related dynamics.",
+            "sample_entropy": (
+                'Under a predictive-processing account, a well-tuned cognitive system minimizes surprise '
+                'through precise, expected dynamics (Friston, 2010; Clark, 2013); falling entropy under '
+                'task engagement can reflect tighter predictive control rather than "less complexity," '
+                'while rising entropy can reflect exploration, uncertainty, or reduced model precision.'
+            ),
+            "spectral_entropy": (
+                'Power distributed across more frequencies suggests multiple processing rhythms are '
+                'active in parallel, consistent with connectionist accounts of distributed processing '
+                '(Rumelhart et al., 1986); read this as evidence about how many concurrent processes are '
+                'engaged, not as a direct measure of cognitive "complexity."'
+            ),
+            "dfa_exponent": (
+                'Long-range correlation in cognitive or neural signals reflects memory-dependent dynamics '
+                'rather than momentary reactivity (Hopfield, 1982; Rumelhart et al., 1986); a shift toward '
+                'stronger persistence is more consistent with the system settling into a constrained, '
+                'attractor-like processing mode than with becoming more "flexible."'
+            ),
         },
     )
 
