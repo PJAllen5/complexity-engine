@@ -15,14 +15,14 @@ physiology:
     condition: Experimental or task condition used for comparison.
     covariate: Optional metadata such as age, group, session, or clinical variables.
   interpretation_rules:
-    sample_entropy: Higher sample entropy suggests greater temporal irregularity and reduced predictability.
-    spectral_entropy: Higher spectral entropy indicates broader frequency content and a more dispersed signal structure.
-    dfa_exponent: DFA exponent reflects long-range temporal correlation; values near 0.5 indicate more random-like behavior, while larger values suggest stronger persistence.
+    sample_entropy: Higher sample entropy indicates reduced short-term predictability in the signal. Physiological regulation is classically understood as a cybernetic feedback process (Wiener, 1948; Ashby, 1956); a healthy regulatory system maintains a flexible operating range, so both unusually low entropy (rigid, overly constrained dynamics) and unusually high entropy (loss of regulatory control) can indicate impaired adaptability rather than simply "more" or "less" complexity.
+    spectral_entropy: A more evenly distributed frequency spectrum means the signal is not dominated by one oscillatory rhythm. In feedback-control terms (Ashby, 1956), effective regulation typically distributes activity across several feedback timescales rather than a single dominant one, so a narrowing spectrum can reflect a collapse toward fewer active regulatory pathways.
+    dfa_exponent: The DFA exponent estimates long-range temporal correlation. Values that depart from the uncorrelated random-walk baseline (~0.5) suggest history-dependent, self-organized fluctuation patterns rather than memoryless noise (Bak, 1996); interpret shifts relative to a subject's own baseline rather than the absolute value alone, since scale-free fluctuation patterns are common in healthy physiological systems.
 
 cognitive:
   name: cognitive
   description: Cognitive and neural time-series analysis focused on signal organization, predictability, and dynamic adjustment to task demands.
-  analysis_question: Do cognitive or neural dynamics shift toward greater flexibility, more structure, or stronger temporal regularity under task demands?
+  analysis_question: Do cognitive or neural dynamics shift toward tighter predictive control, more distributed processing, or stronger temporal structure under task demands?
   recommended_metrics:
     - sample_entropy
     - spectral_entropy
@@ -36,14 +36,14 @@ cognitive:
     condition: Condition, task state, or group labeling used for comparison.
     covariate: Optional covariates such as trial, session, or participant metadata.
   interpretation_rules:
-    sample_entropy: Higher sample entropy can indicate more flexible and less predictable cognitive dynamics.
-    spectral_entropy: Higher spectral entropy suggests broader engagement across frequency bands or less dominant structure.
-    dfa_exponent: DFA exponent helps characterize temporal dependence and long-range structure in task-related dynamics.
+    sample_entropy: Under a predictive-processing account, a well-tuned cognitive system minimizes surprise through precise, expected dynamics (Friston, 2010; Clark, 2013); falling entropy under task engagement can reflect tighter predictive control rather than "less complexity," while rising entropy can reflect exploration, uncertainty, or reduced model precision.
+    spectral_entropy: Power distributed across more frequencies suggests multiple processing rhythms are active in parallel, consistent with connectionist accounts of distributed processing (Rumelhart et al., 1986); read this as evidence about how many concurrent processes are engaged, not as a direct measure of cognitive "complexity."
+    dfa_exponent: Long-range correlation in cognitive or neural signals reflects memory-dependent dynamics rather than momentary reactivity (Hopfield, 1982; Rumelhart et al., 1986); a shift toward stronger persistence is more consistent with the system settling into a constrained, attractor-like processing mode than with becoming more "flexible."
 
 stress:
   name: stress
   description: Stress-monitoring profile for physiological time-series and task-induced variation.
-  analysis_question: Does the monitored signal show elevated variability or altered temporal structure under stress-related conditions?
+  analysis_question: Does the monitored signal show a shift in regulatory range consistent with an allostatic stress response, or a failure to modulate that range?
   recommended_metrics:
     - sample_entropy
     - spectral_entropy
@@ -57,14 +57,14 @@ stress:
     condition: Task or context label used to compare stress and baseline states.
     covariate: Optional metadata such as participant, session, or clinical notes.
   interpretation_rules:
-    sample_entropy: Higher values may indicate greater physiological variability and reduced predictability under stress.
-    spectral_entropy: Broader frequency structure may indicate distributed physiological activation or challenge responses.
-    dfa_exponent: DFA exponent captures temporal persistence; shifts away from baseline may reflect changing regulatory dynamics.
+    sample_entropy: Allostatic accounts of stress treat a healthy system as one that can modulate its regulatory range on demand (Wiener, 1948); a rise in entropy from a tightly regulated baseline is consistent with a shift into a more reactive state, while a baseline that fails to show this contrast may indicate reduced regulatory flexibility rather than resilience.
+    spectral_entropy: Broader frequency dispersion under stress-related conditions is consistent with the recruitment of additional physiological subsystems (Ashby, 1956); a narrow, single-rhythm spectrum at baseline that persists under stress may indicate the system is not adaptively engaging alternate regulatory pathways.
+    dfa_exponent: Shifts in the DFA exponent away from a subject's own baseline reflect changes in how history-dependent the signal's fluctuations are (Bak, 1996; Jensen, 2007); treat this as a marker of altered regulatory dynamics under stress, not as a direct measure of how "complex" or "healthy" the system is.
 
 attention:
   name: attention
   description: Cognitive attention profile for task-driven dynamics and adaptive control.
-  analysis_question: Does the monitored signal show greater organization or flexibility when attention is engaged by the task?
+  analysis_question: Does the monitored signal show tighter predictive precision when attention is engaged by the task, or reduced top-down control?
   recommended_metrics:
     - sample_entropy
     - spectral_entropy
@@ -78,6 +78,6 @@ attention:
     condition: Task phase, condition, or experimental state used for comparison.
     covariate: Optional trial-level, session-level, or participant metadata.
   interpretation_rules:
-    sample_entropy: Higher entropy can indicate flexible attention allocation and less predictable task dynamics.
-    spectral_entropy: Higher spectral entropy may indicate broader engagement or more distributed processing.
-    dfa_exponent: Changes in DFA exponent can signal different forms of temporal coordination during attentional demands.
+    sample_entropy: Attention can be framed as precision-weighting of expected sensory or task-relevant signals (Friston, 2010; Clark, 2013; Hohwy, 2013); reduced entropy when attention is engaged is consistent with tighter predictive precision around the task, while elevated entropy may reflect divided attention or reduced top-down control rather than richer processing.
+    spectral_entropy: A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.
+    dfa_exponent: Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity.

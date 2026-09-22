@@ -2,7 +2,7 @@
   "stress": {
     "name": "stress",
     "description": "Stress-monitoring profile for physiological time-series and task-induced variation.",
-    "analysis_question": "Does the monitored signal show elevated variability or altered temporal structure under stress-related conditions?",
+    "analysis_question": "Does the monitored signal show a shift in regulatory range consistent with an allostatic stress response, or a failure to modulate that range?",
     "recommended_metrics": ["sample_entropy", "spectral_entropy", "dfa_exponent"],
     "expected_columns": ["signal", "condition", "subject_id"],
     "signal_roles": {
@@ -11,15 +11,15 @@
       "covariate": "Optional metadata such as participant, session, or clinical notes."
     },
     "interpretation_rules": {
-      "sample_entropy": "Higher values may indicate greater physiological variability and reduced predictability under stress.",
-      "spectral_entropy": "Broader frequency structure may indicate distributed physiological activation or challenge responses.",
-      "dfa_exponent": "DFA exponent captures temporal persistence; shifts away from baseline may reflect changing regulatory dynamics."
+      "sample_entropy": "Allostatic accounts of stress treat a healthy system as one that can modulate its regulatory range on demand (Wiener, 1948); a rise in entropy from a tightly regulated baseline is consistent with a shift into a more reactive state, while a baseline that fails to show this contrast may indicate reduced regulatory flexibility rather than resilience.",
+      "spectral_entropy": "Broader frequency dispersion under stress-related conditions is consistent with the recruitment of additional physiological subsystems (Ashby, 1956); a narrow, single-rhythm spectrum at baseline that persists under stress may indicate the system is not adaptively engaging alternate regulatory pathways.",
+      "dfa_exponent": "Shifts in the DFA exponent away from a subject's own baseline reflect changes in how history-dependent the signal's fluctuations are (Bak, 1996; Jensen, 2007); treat this as a marker of altered regulatory dynamics under stress, not as a direct measure of how \"complex\" or \"healthy\" the system is."
     }
   },
   "attention": {
     "name": "attention",
     "description": "Cognitive attention profile for task-driven dynamics and adaptive control.",
-    "analysis_question": "Does the monitored signal show greater organization or flexibility when attention is engaged by the task?",
+    "analysis_question": "Does the monitored signal show tighter predictive precision when attention is engaged by the task, or reduced top-down control?",
     "recommended_metrics": ["sample_entropy", "spectral_entropy", "dfa_exponent"],
     "expected_columns": ["signal", "condition", "trial"],
     "signal_roles": {
@@ -28,9 +28,9 @@
       "covariate": "Optional trial-level, session-level, or participant metadata."
     },
     "interpretation_rules": {
-      "sample_entropy": "Higher entropy can indicate flexible attention allocation and less predictable task dynamics.",
-      "spectral_entropy": "Higher spectral entropy may indicate broader engagement or more distributed processing.",
-      "dfa_exponent": "Changes in DFA exponent can signal different forms of temporal coordination during attentional demands."
+      "sample_entropy": "Attention can be framed as precision-weighting of expected sensory or task-relevant signals (Friston, 2010; Clark, 2013; Hohwy, 2013); reduced entropy when attention is engaged is consistent with tighter predictive precision around the task, while elevated entropy may reflect divided attention or reduced top-down control rather than richer processing.",
+      "spectral_entropy": "A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.",
+      "dfa_exponent": "Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity."
     }
   }
 }

@@ -17,6 +17,14 @@ _DEFAULT_METRIC_EXPLANATIONS = {
     "dfa_exponent": "DFA exponent estimates long-range correlation structure; values near 0.5 often indicate random-like structure, while higher values suggest stronger persistence.",
 }
 
+_ENTROPY_COMPLEXITY_CAVEAT = (
+    'Methodological note: entropy-based metrics quantify unpredictability, not complexity in the '
+    'fuller sense used in complexity science (Crutchfield & Young, 1989; Gell-Mann & Lloyd, 1996). '
+    'A maximally random signal has high entropy but little structured organization, so read the '
+    'entropy changes below as changes in signal regularity, not as a direct verdict on how '
+    '"complex" the underlying system is.'
+)
+
 _METADATA_COLUMNS = {
     "subject_id",
     "subject",
@@ -98,6 +106,9 @@ def _generate_interpretation_lines(complexity_df: pd.DataFrame, domain_profile: 
     if domain_profile.analysis_question:
         lines.append(f"Guiding question: {domain_profile.analysis_question}")
         lines.append("")
+
+    lines.append(_ENTROPY_COMPLEXITY_CAVEAT)
+    lines.append("")
 
     metrics_of_interest = list(domain_profile.recommended_metrics) or list(_DEFAULT_METRIC_EXPLANATIONS)
     for metric in metrics_of_interest:
