@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -255,3 +257,43 @@ def test_report_includes_statistical_significance(tmp_path):
     assert "## Statistical significance" in report
     assert "differs significantly" in report
     assert "Welch's t-test" in report
+
+
+def test_report_includes_visualizations(tmp_path):
+    csv_path = _write_signal_csv(tmp_path, [1.0, 2.0, 1.5, 2.5] * 5, [10.0, 12.0, 9.0, 11.0] * 5)
+
+    result = analyze_dataset(
+        csv_path,
+        signal_cols=["signal"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    assert "signal_condition_comparison" in result["plot_paths"]
+    assert "signal_complexity_metrics" in result["plot_paths"]
+    for path in result["plot_paths"].values():
+        assert (tmp_path / "outputs" / "plots").exists()
+        assert Path(path).exists()
+
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "## Visualizations" in report
+    assert "![signal_condition_comparison](plots/signal_condition_comparison.png)" in report
+
+
+def test_multi_signal_report_includes_mutual_information_heatmap(tmp_path):
+    csv_path = _write_two_signal_csv(tmp_path)
+
+    result = analyze_dataset(
+        csv_path,
+        signal_cols=["signal_a", "signal_b"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    assert "cross_signal_mutual_information" in result["plot_paths"]
+    assert Path(result["plot_paths"]["cross_signal_mutual_information"]).exists()
+
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "![cross_signal_mutual_information](plots/cross_signal_mutual_information.png)" in report
