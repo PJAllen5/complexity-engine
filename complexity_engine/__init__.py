@@ -9,6 +9,8 @@ from .metrics import (
     sample_entropy,
     spectral_entropy,
 )
+from .network_analysis import analyze_network, load_edge_list
+from .network_metrics import build_graph, compute_network_metrics
 
 __all__ = [
     "analyze_dataset",
@@ -20,4 +22,8 @@ __all__ = [
     "dfa_exponent",
     "mutual_information",
     "compare_conditions",
+    "analyze_network",
+    "load_edge_list",
+    "build_graph",
+    "compute_network_metrics",
 ]
