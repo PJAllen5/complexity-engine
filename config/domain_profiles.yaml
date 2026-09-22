@@ -1,0 +1,83 @@
+physiology:
+  name: physiology
+  description: Physiological and behavioral time-series analysis focused on variability, stress response, and temporal structure.
+  analysis_question: How do changes in physiological signal dynamics relate to condition-specific stress, arousal, or variability?
+  recommended_metrics:
+    - sample_entropy
+    - spectral_entropy
+    - dfa_exponent
+  expected_columns:
+    - signal
+    - condition
+    - subject_id
+  signal_roles:
+    primary_signal: Main physiological signal being assessed.
+    condition: Experimental or task condition used for comparison.
+    covariate: Optional metadata such as age, group, session, or clinical variables.
+  interpretation_rules:
+    sample_entropy: Higher sample entropy suggests greater temporal irregularity and reduced predictability.
+    spectral_entropy: Higher spectral entropy indicates broader frequency content and a more dispersed signal structure.
+    dfa_exponent: DFA exponent reflects long-range temporal correlation; values near 0.5 indicate more random-like behavior, while larger values suggest stronger persistence.
+
+cognitive:
+  name: cognitive
+  description: Cognitive and neural time-series analysis focused on signal organization, predictability, and dynamic adjustment to task demands.
+  analysis_question: Do cognitive or neural dynamics shift toward greater flexibility, more structure, or stronger temporal regularity under task demands?
+  recommended_metrics:
+    - sample_entropy
+    - spectral_entropy
+    - dfa_exponent
+  expected_columns:
+    - signal
+    - condition
+    - trial
+  signal_roles:
+    primary_signal: Main cognitive or neural signal being analyzed.
+    condition: Condition, task state, or group labeling used for comparison.
+    covariate: Optional covariates such as trial, session, or participant metadata.
+  interpretation_rules:
+    sample_entropy: Higher sample entropy can indicate more flexible and less predictable cognitive dynamics.
+    spectral_entropy: Higher spectral entropy suggests broader engagement across frequency bands or less dominant structure.
+    dfa_exponent: DFA exponent helps characterize temporal dependence and long-range structure in task-related dynamics.
+
+stress:
+  name: stress
+  description: Stress-monitoring profile for physiological time-series and task-induced variation.
+  analysis_question: Does the monitored signal show elevated variability or altered temporal structure under stress-related conditions?
+  recommended_metrics:
+    - sample_entropy
+    - spectral_entropy
+    - dfa_exponent
+  expected_columns:
+    - signal
+    - condition
+    - subject_id
+  signal_roles:
+    primary_signal: Main physiological signal used to estimate stress-related dynamics.
+    condition: Task or context label used to compare stress and baseline states.
+    covariate: Optional metadata such as participant, session, or clinical notes.
+  interpretation_rules:
+    sample_entropy: Higher values may indicate greater physiological variability and reduced predictability under stress.
+    spectral_entropy: Broader frequency structure may indicate distributed physiological activation or challenge responses.
+    dfa_exponent: DFA exponent captures temporal persistence; shifts away from baseline may reflect changing regulatory dynamics.
+
+attention:
+  name: attention
+  description: Cognitive attention profile for task-driven dynamics and adaptive control.
+  analysis_question: Does the monitored signal show greater organization or flexibility when attention is engaged by the task?
+  recommended_metrics:
+    - sample_entropy
+    - spectral_entropy
+    - dfa_exponent
+  expected_columns:
+    - signal
+    - condition
+    - trial
+  signal_roles:
+    primary_signal: Main cognitive or neural signal associated with attentional state.
+    condition: Task phase, condition, or experimental state used for comparison.
+    covariate: Optional trial-level, session-level, or participant metadata.
+  interpretation_rules:
+    sample_entropy: Higher entropy can indicate flexible attention allocation and less predictable task dynamics.
+    spectral_entropy: Higher spectral entropy may indicate broader engagement or more distributed processing.
+    dfa_exponent: Changes in DFA exponent can signal different forms of temporal coordination during attentional demands.
