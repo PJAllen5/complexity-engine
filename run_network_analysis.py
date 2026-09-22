@@ -9,7 +9,7 @@ from complexity_engine.network_analysis import analyze_network
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze graph-structured data and compute network-science metrics.")
-    parser.add_argument("--data", type=str, default=str(Path(__file__).resolve().parent / "data" / "network_example.csv"), help="Path to a CSV/Excel edge list.")
+    parser.add_argument("--data", type=str, default=str(Path(__file__).resolve().parent / "data" / "network_example.csv"), help="Path to a CSV/Excel edge list, or a comma-separated list of files to merge (e.g. multiple session files sharing the same columns).")
     parser.add_argument("--source-col", type=str, default="source", help="Column giving one endpoint of each edge.")
     parser.add_argument("--target-col", type=str, default="target", help="Column giving the other endpoint of each edge.")
     parser.add_argument("--weight-col", type=str, default="weight", help="Optional edge weight column; pass an empty string to ignore weights.")
@@ -34,8 +34,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    data_files = [item.strip() for item in args.data.split(",") if item.strip()]
+    data_path = data_files[0] if len(data_files) == 1 else data_files
+
     result = analyze_network(
-        data_path=args.data,
+        data_path=data_path,
         source_col=args.source_col,
         target_col=args.target_col,
         weight_col=args.weight_col or None,
@@ -51,6 +54,11 @@ def main() -> None:
 
     if result["missing_columns"]:
         print(f"Warning: dataset is missing columns expected by the '{args.domain}' domain profile: {', '.join(result['missing_columns'])}")
+    provenance = result["provenance"]
+    if provenance["rows_dropped_missing_values"]:
+        print(f"Warning: dropped {provenance['rows_dropped_missing_values']} row(s) missing a required value.")
+    if provenance["duplicate_rows_detected"]:
+        print(f"Warning: detected {provenance['duplicate_rows_detected']} exact duplicate row(s) (not removed automatically; see report.md).")
     print(f"Saved network metrics to: {result['metrics_csv']}")
     if result["centrality_csv"]:
         print(f"Saved node centrality to: {result['centrality_csv']}")

@@ -9,10 +9,12 @@ small, narrow pipelines.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
 
+from .analysis import _describe_data_source, clean_dataset, load_dataset
 from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
 from .network_metrics import (
     NETWORK_METRIC_KEYS,
@@ -37,14 +39,14 @@ _DEFAULT_METRIC_EXPLANATIONS = {
 }
 
 
-def load_edge_list(data_path: str | Path) -> pd.DataFrame:
-    path = Path(data_path)
-    suffix = path.suffix.lower()
-    if suffix == ".csv":
-        return pd.read_csv(path)
-    if suffix in {".xls", ".xlsx"}:
-        return pd.read_excel(path)
-    raise ValueError(f"Unsupported file type: {suffix}")
+def load_edge_list(data_path: str | Path | Sequence[str | Path]) -> pd.DataFrame:
+    """Load one edge-list file, or merge several from the same multi-session study.
+
+    Delegates to analysis.py's load_dataset(), which is data-shape-agnostic (generic
+    CSV/Excel loading, multi-file merge, and column-mismatch validation -- nothing
+    about it is specific to time series), rather than duplicating that logic here.
+    """
+    return load_dataset(data_path)
 
 
 def _missing_expected_columns(df: pd.DataFrame, domain_profile: DomainProfile) -> list[str]:
@@ -103,7 +105,7 @@ def _generate_network_interpretation_lines(metrics_df: pd.DataFrame, domain_prof
 
 
 def analyze_network(
-    data_path: str | Path,
+    data_path: str | Path | Sequence[str | Path],
     source_col: str = "source",
     target_col: str = "target",
     weight_col: str | None = "weight",
@@ -121,8 +123,10 @@ def analyze_network(
     validate_recommended_metrics(domain_profile, NETWORK_METRIC_KEYS)
     df = load_edge_list(data_path)
     missing_columns = _missing_expected_columns(df, domain_profile)
-
     has_condition = condition_col is not None and condition_col in df.columns
+    required_cols = [source_col, target_col] + ([condition_col] if has_condition else [])
+    df, provenance = clean_dataset(df, required_cols=required_cols)
+
     if has_condition:
         conditions = sorted(df[condition_col].dropna().unique(), key=str)
         groups = {condition: df[df[condition_col] == condition] for condition in conditions}
@@ -172,7 +176,7 @@ def analyze_network(
         f"- Domain: {domain_profile.name}",
         f"- Domain description: {domain_profile.description}",
         f"- Analysis question: {domain_profile.analysis_question}" if domain_profile.analysis_question else "",
-        f"- Data source: {Path(data_path).name}",
+        f"- Data source: {_describe_data_source(data_path)}",
         f"- Edge columns: {source_col}, {target_col}" + (f", {weight_col}" if weight_col in df.columns else ""),
         f"- Condition column: {condition_col if has_condition else 'none (single network)'}",
         f"- Directed: {directed}",
@@ -189,6 +193,15 @@ def analyze_network(
             f"[{', '.join(domain_profile.expected_columns)}]; missing from this dataset: {', '.join(missing_columns)}."
         )
         report_lines.append("")
+    report_lines.append("## Data provenance")
+    report_lines.append(f"- Input rows: {provenance['input_rows']}")
+    report_lines.append(f"- Duplicate rows detected (not removed automatically): {provenance['duplicate_rows_detected']}")
+    report_lines.append(
+        f"- Rows dropped for missing values in {provenance['missing_value_columns_checked']}: "
+        f"{provenance['rows_dropped_missing_values']}"
+    )
+    report_lines.append(f"- Rows analyzed: {provenance['output_rows']}")
+    report_lines.append("")
     if directed:
         report_lines.append(
             "Note: this is a directed network. n_connected_components counts weakly connected "
@@ -218,6 +231,7 @@ def analyze_network(
         "graphs": graphs,
         "domain_profile": domain_profile.as_dict(),
         "missing_columns": missing_columns,
+        "provenance": provenance,
         "network_metrics_summary": metrics_df,
         "node_centrality": centrality_df,
         "metrics_csv": str(metrics_path),
