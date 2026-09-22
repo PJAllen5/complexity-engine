@@ -116,3 +116,14 @@ def test_run_network_analysis_cli_rejects_unknown_domain(tmp_path):
     assert result.returncode != 0
     assert "Unknown domain" in result.stderr
     assert not (tmp_path / "report.md").exists()
+
+
+def test_run_network_analysis_cli_compute_small_world_flag(tmp_path):
+    result = _run_cli(
+        "run_network_analysis.py",
+        ["--compute-small-world", "--random-seed", "7", "--output-dir", str(tmp_path)],
+    )
+
+    assert result.returncode == 0, result.stderr
+    report = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "### Small-world statistics" in report

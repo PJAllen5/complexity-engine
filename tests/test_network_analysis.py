@@ -160,3 +160,38 @@ bad_network:
             output_dir=tmp_path / "outputs",
         )
     assert not (tmp_path / "outputs").exists()
+
+
+def test_analyze_network_compute_small_world_adds_columns_and_report_section(tmp_path):
+    import networkx as nx
+
+    rest_graph = nx.watts_strogatz_graph(n=12, k=4, p=0.1, seed=1)
+    task_graph = nx.barabasi_albert_graph(n=12, m=2, seed=1)
+    rows = [{"source": f"n{u}", "target": f"n{v}", "condition": "rest"} for u, v in rest_graph.edges()]
+    rows += [{"source": f"n{u}", "target": f"n{v}", "condition": "task"} for u, v in task_graph.edges()]
+    csv_path = _write_edge_csv(tmp_path, rows)
+
+    result = analyze_network(csv_path, compute_small_world=True, output_dir=tmp_path / "outputs")
+
+    metrics = result["network_metrics_summary"]
+    assert "small_world_sigma" in metrics.columns
+    assert "small_world_omega" in metrics.columns
+    assert metrics["small_world_sigma"].notna().all()
+
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "### Small-world statistics" in report
+    assert "Humphries & Gurney, 2008" in report
+    assert "Telesford et al., 2011" in report
+
+
+def test_analyze_network_small_world_disabled_by_default(tmp_path):
+    csv_path = _write_edge_csv(
+        tmp_path,
+        [{"source": "a", "target": "b"}, {"source": "b", "target": "c"}, {"source": "c", "target": "a"}],
+    )
+
+    result = analyze_network(csv_path, condition_col=None, output_dir=tmp_path / "outputs")
+
+    assert "small_world_sigma" not in result["network_metrics_summary"].columns
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "Small-world statistics" not in report
