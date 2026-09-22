@@ -85,3 +85,31 @@ attention:
     spectral_entropy: A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.
     dfa_exponent: Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity.
     mutual_information: Under a predictive-processing account, attention coordinates precision-weighting across signals (Friston, 2010); increased mutual information when attention is engaged is consistent with shared top-down control linking the signals, while decreased coupling suggests they are being processed more independently.
+
+network:
+  name: network
+  description: Network-science analysis of graph-structured data, focused on small-world structure, community organization, and connectivity.
+  analysis_question: Does the network show small-world organization, distinct community structure, or scale-free connectivity, and how does that structure shift between conditions?
+  recommended_metrics:
+    - density
+    - mean_degree
+    - avg_clustering
+    - transitivity
+    - modularity
+    - avg_shortest_path_length
+  expected_columns:
+    - source
+    - target
+    - condition
+  signal_roles:
+    source: One endpoint of each edge (a node identifier).
+    target: The other endpoint of each edge (a node identifier).
+    weight: Optional edge weight; used for clustering and modularity, but not for shortest-path distance.
+    condition: Experimental or task condition used to compare network structure across states.
+  interpretation_rules:
+    avg_clustering: High average clustering means a node's neighbors tend to also be connected to each other, forming locally dense neighborhoods; this is one of the two defining ingredients of small-world structure (Watts & Strogatz, 1998).
+    avg_shortest_path_length: A short average path length despite high clustering is the hallmark of small-world structure (Watts & Strogatz, 1998), combining locally dense neighborhoods with efficient global reach. A short path length alongside low clustering instead suggests a more random or centralized structure rather than a small-world one.
+    transitivity: Transitivity is the network-wide version of clustering (the fraction of connected triples that close into a triangle); comparing it against average clustering shows whether local density is spread evenly or concentrated in a few well-connected nodes (Newman, 2010).
+    modularity: High modularity indicates the network decomposes into distinct communities with denser connections inside each community than between them (Newman, 2010), consistent with functional specialization or subgroup structure; low modularity suggests a more globally integrated network without clear subgroup boundaries.
+    density: Density is the fraction of all possible edges that are actually present; sparse, structured networks with high clustering are more consistent with small-world or scale-free organization than with a dense, unstructured network (Barabási & Albert, 1999).
+    mean_degree: A network dominated by a few very high-degree hub nodes rather than a roughly uniform degree is the signature of scale-free, preferential-attachment growth (Barabási & Albert, 1999) rather than a random or regular network; this summary reports the mean only, so check the degree-distribution plot for whether a few hubs dominate.

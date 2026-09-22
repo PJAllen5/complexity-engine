@@ -3,5 +3,6 @@ pandas
 scipy
 matplotlib
 seaborn
+networkx
 pytest
 PyYAML

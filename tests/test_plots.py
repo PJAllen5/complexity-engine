@@ -1,8 +1,10 @@
+import networkx as nx
 import pandas as pd
 
 from complexity_engine.plots import (
     plot_complexity_metrics,
     plot_condition_comparison,
+    plot_degree_distribution,
     plot_mutual_information_heatmap,
 )
 
@@ -76,4 +78,23 @@ def test_plot_mutual_information_heatmap_writes_valid_png(tmp_path):
 def test_plot_mutual_information_heatmap_returns_none_when_empty(tmp_path):
     empty_df = pd.DataFrame(columns=["condition", "signal_a", "signal_b", "mutual_information"])
     result = plot_mutual_information_heatmap(empty_df, tmp_path / "heatmap.png")
+    assert result is None
+
+
+def test_plot_degree_distribution_writes_valid_png(tmp_path):
+    graphs = {
+        "rest": nx.watts_strogatz_graph(n=10, k=4, p=0.1, seed=1),
+        "task": nx.barabasi_albert_graph(n=10, m=2, seed=1),
+    }
+    output_path = tmp_path / "degree.png"
+
+    result = plot_degree_distribution(graphs, output_path)
+
+    assert result == str(output_path)
+    assert output_path.exists()
+    assert _png_is_valid(output_path)
+
+
+def test_plot_degree_distribution_returns_none_for_empty_graphs():
+    result = plot_degree_distribution({"empty": nx.Graph()}, "unused.png")
     assert result is None

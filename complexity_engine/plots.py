@@ -15,6 +15,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
@@ -193,5 +194,37 @@ def plot_mutual_information_heatmap(
         fig.colorbar(last_im, ax=axes, fraction=0.046, pad=0.04, label="mutual information (bits)")
     fig.suptitle("Cross-signal mutual information")
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return str(output_path)
+
+
+def plot_degree_distribution(
+    graphs: dict[str, nx.Graph],
+    output_path: str | Path,
+) -> str | None:
+    """Small-multiple degree-distribution bar charts, one panel per condition/graph."""
+    graphs = {name: g for name, g in graphs.items() if g.number_of_nodes() > 0}
+    if not graphs:
+        return None
+
+    names = sorted(graphs, key=str)
+    colors = _condition_colors(names)
+
+    fig, axes = plt.subplots(1, len(names), figsize=(3.5 * len(names), 3.5), squeeze=False)
+    axes = axes[0]
+
+    for ax, name in zip(axes, names):
+        _style_axes(ax)
+        degrees = [d for _, d in graphs[name].degree()]
+        max_degree = max(degrees) if degrees else 0
+        bins = np.arange(0, max_degree + 2) - 0.5
+        ax.hist(degrees, bins=bins, color=colors[name], zorder=2)
+        ax.set_xlabel("degree")
+        ax.set_ylabel("node count")
+        ax.set_title(str(name))
+
+    fig.suptitle("Degree distribution")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
     plt.close(fig)
     return str(output_path)
