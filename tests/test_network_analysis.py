@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from complexity_engine.network_analysis import analyze_network
 
@@ -131,3 +132,31 @@ def test_analyze_network_compute_centrality_writes_output(tmp_path):
 
     report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
     assert "## Node centrality" in report
+
+
+def test_analyze_network_rejects_domain_with_unknown_metric(tmp_path):
+    csv_path = _write_edge_csv(tmp_path, [{"source": "a", "target": "b"}])
+
+    config_path = tmp_path / "bad_domain.yaml"
+    config_path.write_text(
+        """
+bad_network:
+  name: bad_network
+  description: Test domain with a metric that belongs to the time-series pipeline.
+  recommended_metrics:
+    - density
+    - sample_entropy
+  expected_columns: [source, target]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unknown recommended_metrics"):
+        analyze_network(
+            csv_path,
+            condition_col=None,
+            domain="bad_network",
+            domain_config=config_path,
+            output_dir=tmp_path / "outputs",
+        )
+    assert not (tmp_path / "outputs").exists()

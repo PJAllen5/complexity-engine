@@ -48,7 +48,10 @@ built on that foundation.
 
 Domain profiles for this pipeline (`physiology`, `cognitive`, `stress`, `attention`, and any
 custom ones you add) live in `config/domain_profiles.yaml` (or `.json`) and can be extended or
-overridden without touching Python code.
+overridden without touching Python code. A profile's `recommended_metrics` is validated
+against the pipeline's known metrics as soon as the domain is looked up — before any data is
+loaded — so a typo or a metric name that belongs to the other pipeline fails immediately with
+a clear message, not deep inside a later analysis step.
 
 ## Network pipeline: what it does today
 

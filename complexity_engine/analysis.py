@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles
-from .metrics import compare_conditions, compute_complexity_metrics, descriptive_stats, mutual_information
+from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
+from .metrics import _METRIC_FUNCTIONS, compare_conditions, compute_complexity_metrics, descriptive_stats, mutual_information
 from .plots import plot_complexity_metrics, plot_condition_comparison, plot_mutual_information_heatmap
 
 _SIGNIFICANCE_ALPHA = 0.05
@@ -350,6 +350,7 @@ def analyze_dataset(
 ) -> dict[str, pd.DataFrame | str]:
     load_domain_profiles(domain_config)
     domain_profile = get_domain_profile(domain)
+    validate_recommended_metrics(domain_profile, _METRIC_FUNCTIONS.keys())
     df = load_dataset(data_path)
     selected_signals = resolve_signal_columns(df, signal_cols=signal_cols if signal_cols is not None else signal_col)
     missing_columns = _missing_expected_columns(df, domain_profile)
