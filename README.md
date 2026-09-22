@@ -58,15 +58,21 @@ parallel pipeline:
 
 1. **Ingest** a CSV/Excel edge list (`source`, `target` columns, an optional `weight` column,
    and an optional `condition` column to compare multiple networks — e.g. `rest` vs `task`).
+   Undirected by default; pass `--directed` to treat edges as directed.
 2. **Compute network metrics** per condition (or once, for a single network): density, mean
    degree, average clustering, transitivity, modularity, average shortest path length, and
-   number of connected components.
-3. **Visualize** the degree distribution per condition as a small-multiple bar chart.
-4. **Interpret domain-aware**, grounded in the network-science literature already in the
+   number of connected components. For a directed network, also reports mean in-/out-degree
+   and strongly- vs. weakly-connected component counts — see the report's note on how
+   direction changes path-length and connectivity semantics.
+3. **Compute per-node centrality** (degree, betweenness, eigenvector), opt-in via
+   `--compute-centrality` since it's a different granularity (per-node, not per-condition)
+   from the rest of the report.
+4. **Visualize** the degree distribution per condition as a small-multiple bar chart.
+5. **Interpret domain-aware**, grounded in the network-science literature already in the
    bibliography: small-world structure (Watts & Strogatz, 1998), scale-free/hub structure
    (Barabási & Albert, 1999), and community/modularity structure (Newman, 2010).
-5. **Report**: writes `network_metrics_summary.csv`, the degree-distribution PNG, and a
-   `report.md`.
+6. **Report**: writes `network_metrics_summary.csv`, optionally `node_centrality.csv`, the
+   degree-distribution PNG, and a `report.md`.
 
 This is a genuinely different data shape from the time-series pipeline (rows are edges, not
 observations), so it's kept as its own entry point (`network_analysis.py` /

@@ -14,6 +14,8 @@ def main() -> None:
     parser.add_argument("--target-col", type=str, default="target", help="Column giving the other endpoint of each edge.")
     parser.add_argument("--weight-col", type=str, default="weight", help="Optional edge weight column; pass an empty string to ignore weights.")
     parser.add_argument("--condition-col", type=str, default="condition", help="Optional column identifying which network each edge belongs to; pass an empty string for a single network.")
+    parser.add_argument("--directed", action="store_true", help="Treat edges as directed. Changes several metrics' definitions -- see the report's note when this is set.")
+    parser.add_argument("--compute-centrality", action="store_true", help="Also compute and report per-node degree/betweenness/eigenvector centrality.")
     parser.add_argument("--domain", type=str, default="network", help="Domain profile to apply.")
     parser.add_argument("--domain-config", type=str, default=None, help="Optional path to a YAML or JSON config file containing custom domain profiles.")
     parser.add_argument(
@@ -31,6 +33,8 @@ def main() -> None:
         target_col=args.target_col,
         weight_col=args.weight_col or None,
         condition_col=args.condition_col or None,
+        directed=args.directed,
+        compute_centrality=args.compute_centrality,
         output_dir=args.output_dir,
         domain=args.domain,
         domain_config=args.domain_config,
@@ -39,6 +43,8 @@ def main() -> None:
     if result["missing_columns"]:
         print(f"Warning: dataset is missing columns expected by the '{args.domain}' domain profile: {', '.join(result['missing_columns'])}")
     print(f"Saved network metrics to: {result['metrics_csv']}")
+    if result["centrality_csv"]:
+        print(f"Saved node centrality to: {result['centrality_csv']}")
     print(f"Saved report to: {result['report_md']}")
 
 
