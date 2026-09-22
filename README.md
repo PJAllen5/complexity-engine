@@ -70,11 +70,18 @@ parallel pipeline:
 3. **Compute per-node centrality** (degree, betweenness, eigenvector), opt-in via
    `--compute-centrality` since it's a different granularity (per-node, not per-condition)
    from the rest of the report.
-4. **Visualize** the degree distribution per condition as a small-multiple bar chart.
-5. **Interpret domain-aware**, grounded in the network-science literature already in the
+4. **Compute formal small-world statistics** (sigma and omega — Humphries & Gurney 2008;
+   Telesford et al. 2011), opt-in via `--compute-small-world`, comparing the network's
+   clustering/path length against randomized reference graphs of the same degree sequence
+   rather than leaving "is this small-world?" to eyeballing `avg_clustering` and
+   `avg_shortest_path_length`. Only well-defined for an undirected, fully connected network
+   with at least 4 nodes — NaN otherwise. Off by default since it's the most computationally
+   expensive metric in either pipeline.
+5. **Visualize** the degree distribution per condition as a small-multiple bar chart.
+6. **Interpret domain-aware**, grounded in the network-science literature already in the
    bibliography: small-world structure (Watts & Strogatz, 1998), scale-free/hub structure
    (Barabási & Albert, 1999), and community/modularity structure (Newman, 2010).
-6. **Report**: writes `network_metrics_summary.csv`, optionally `node_centrality.csv`, the
+7. **Report**: writes `network_metrics_summary.csv`, optionally `node_centrality.csv`, the
    degree-distribution PNG, and a `report.md`.
 
 This is a genuinely different data shape from the time-series pipeline (rows are edges, not
@@ -169,7 +176,5 @@ out of sync with the bibliography (wrong year, removed entry, typo'd author).
 
 Tracked as GitHub issues rather than duplicated here — see the repo's issue tracker for the
 full history (closed "Stage N" issues document what's shipped) and open issues for what's
-next: directed-graph/centrality support and a formal small-world sigma statistic for the
-network pipeline, bringing the network pipeline's ingestion up to parity with the time-series
-pipeline's multi-file/duplicate-detection/provenance handling, load-time domain-profile config
-validation, CLI smoke tests, and unit-handling design.
+next: bringing the network pipeline's ingestion up to parity with the time-series pipeline's
+multi-file/duplicate-detection/provenance handling, and unit-handling design.

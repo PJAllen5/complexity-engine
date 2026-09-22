@@ -14,8 +14,16 @@ from pathlib import Path
 import pandas as pd
 
 from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
-from .network_metrics import NETWORK_METRIC_KEYS, build_graph, compute_network_metrics, compute_node_centrality
+from .network_metrics import (
+    NETWORK_METRIC_KEYS,
+    build_graph,
+    compute_network_metrics,
+    compute_node_centrality,
+    compute_small_world_metrics,
+)
 from .plots import plot_degree_distribution
+
+_SMALL_WORLD_METRICS = ("small_world_sigma", "small_world_omega")
 
 _DEFAULT_METRIC_EXPLANATIONS = {
     "avg_clustering": "Average clustering measures how often a node's neighbors are also connected to each other.",
@@ -73,6 +81,24 @@ def _generate_network_interpretation_lines(metrics_df: pd.DataFrame, domain_prof
         lines.append(
             f"- {metric_label} is {direction} in {second['condition']} than in {first['condition']}. {rule}".rstrip()
         )
+
+    small_world_metrics = [m for m in _SMALL_WORLD_METRICS if m in metrics_df.columns]
+    if small_world_metrics:
+        lines.append("")
+        lines.append("### Small-world statistics")
+        for metric in small_world_metrics:
+            explanation = domain_profile.interpretation_rules.get(metric)
+            if explanation:
+                lines.append(f"- {metric}: {explanation}")
+        for metric in small_world_metrics:
+            first_val, second_val = float(first[metric]), float(second[metric])
+            if pd.isna(first_val) or pd.isna(second_val) or first_val == second_val:
+                continue
+            direction = "higher" if second_val > first_val else "lower"
+            metric_label = metric.replace("_", " ")
+            lines.append(
+                f"- {metric_label} is {direction} in {second['condition']} than in {first['condition']}."
+            )
     return lines
 
 
@@ -84,6 +110,8 @@ def analyze_network(
     condition_col: str | None = "condition",
     directed: bool = False,
     compute_centrality: bool = False,
+    compute_small_world: bool = False,
+    random_seed: int = 42,
     output_dir: str | Path = "outputs",
     domain: str | None = "network",
     domain_config: str | Path | None = None,
@@ -106,7 +134,14 @@ def analyze_network(
         for condition, edges in groups.items()
     }
     metrics_df = pd.DataFrame.from_records(
-        [{"condition": condition, **compute_network_metrics(graph)} for condition, graph in graphs.items()]
+        [
+            {
+                "condition": condition,
+                **compute_network_metrics(graph),
+                **(compute_small_world_metrics(graph, seed=random_seed) if compute_small_world else {}),
+            }
+            for condition, graph in graphs.items()
+        ]
     )
 
     output_dir = Path(output_dir)
@@ -160,6 +195,13 @@ def analyze_network(
             "components (ignoring direction); avg_shortest_path_length is computed on the "
             "largest strongly connected component (n_strongly_connected_components), the only "
             "subgraph where every node pair is mutually reachable."
+        )
+        report_lines.append("")
+    if compute_small_world:
+        report_lines.append(
+            "Note: small_world_sigma/small_world_omega are NaN for any condition whose network "
+            "isn't undirected, fully connected, and at least 4 nodes/2 edges -- these statistics "
+            "compare against randomized reference graphs and aren't well-defined otherwise."
         )
         report_lines.append("")
     report_lines.extend(["## Network metrics", metrics_df.to_string(index=False), ""])

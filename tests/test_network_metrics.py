@@ -1,7 +1,16 @@
+import math
+import subprocess
+import sys
+
 import networkx as nx
 import pandas as pd
 
-from complexity_engine.network_metrics import build_graph, compute_network_metrics, compute_node_centrality
+from complexity_engine.network_metrics import (
+    build_graph,
+    compute_network_metrics,
+    compute_node_centrality,
+    compute_small_world_metrics,
+)
 
 
 def test_build_graph_creates_expected_nodes_and_edges():
@@ -105,3 +114,65 @@ def test_compute_node_centrality_returns_expected_columns():
 def test_compute_node_centrality_on_empty_graph_returns_empty_frame():
     centrality = compute_node_centrality(nx.Graph())
     assert centrality.empty
+
+
+def test_compute_small_world_metrics_on_connected_graph():
+    graph = nx.watts_strogatz_graph(n=12, k=4, p=0.1, seed=1)
+
+    result = compute_small_world_metrics(graph, seed=1)
+
+    assert math.isfinite(result["small_world_sigma"])
+    assert math.isfinite(result["small_world_omega"])
+
+
+def test_compute_small_world_metrics_is_reproducible_with_seed():
+    graph = nx.watts_strogatz_graph(n=12, k=4, p=0.1, seed=1)
+
+    first = compute_small_world_metrics(graph, seed=7)
+    second = compute_small_world_metrics(graph, seed=7)
+
+    assert first == second
+
+
+def test_compute_small_world_metrics_rejects_directed_graph():
+    graph = nx.watts_strogatz_graph(n=12, k=4, p=0.1, seed=1).to_directed()
+
+    result = compute_small_world_metrics(graph)
+
+    assert math.isnan(result["small_world_sigma"])
+    assert math.isnan(result["small_world_omega"])
+
+
+def test_compute_small_world_metrics_rejects_tiny_graph():
+    edges = pd.DataFrame({"source": ["a"], "target": ["b"]})
+    graph = build_graph(edges, weight_col=None)
+
+    result = compute_small_world_metrics(graph)
+
+    assert math.isnan(result["small_world_sigma"])
+    assert math.isnan(result["small_world_omega"])
+
+
+def test_compute_small_world_metrics_disconnected_graph_does_not_hang():
+    """Regression test for a real bug found while building this feature: nx.sigma()/
+    nx.omega() call nx.random_reference() internally, which can hang indefinitely on
+    a graph with an isolated node (its edge-rewiring search can never terminate
+    normally, since a degree-0 node can never gain an edge through swaps). Runs in a
+    subprocess with a real timeout, so a regression in the precondition guard fails
+    this test instead of hanging the whole suite.
+    """
+    code = (
+        "import math\n"
+        "import networkx as nx\n"
+        "from complexity_engine.network_metrics import compute_small_world_metrics\n"
+        "g = nx.Graph()\n"
+        "g.add_edges_from([('a', 'b'), ('b', 'c'), ('c', 'a')])\n"
+        "g.add_node('isolated')\n"
+        "result = compute_small_world_metrics(g)\n"
+        "assert math.isnan(result['small_world_sigma'])\n"
+        "assert math.isnan(result['small_world_omega'])\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout

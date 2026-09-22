@@ -16,6 +16,13 @@ def main() -> None:
     parser.add_argument("--condition-col", type=str, default="condition", help="Optional column identifying which network each edge belongs to; pass an empty string for a single network.")
     parser.add_argument("--directed", action="store_true", help="Treat edges as directed. Changes several metrics' definitions -- see the report's note when this is set.")
     parser.add_argument("--compute-centrality", action="store_true", help="Also compute and report per-node degree/betweenness/eigenvector centrality.")
+    parser.add_argument(
+        "--compute-small-world",
+        action="store_true",
+        help="Also compute the small-world sigma/omega statistics (compares against randomized reference graphs). "
+        "Only well-defined for an undirected, fully connected network with >= 4 nodes; NaN otherwise.",
+    )
+    parser.add_argument("--random-seed", type=int, default=42, help="Seed for the randomized reference graphs used by --compute-small-world.")
     parser.add_argument("--domain", type=str, default="network", help="Domain profile to apply.")
     parser.add_argument("--domain-config", type=str, default=None, help="Optional path to a YAML or JSON config file containing custom domain profiles.")
     parser.add_argument(
@@ -35,6 +42,8 @@ def main() -> None:
         condition_col=args.condition_col or None,
         directed=args.directed,
         compute_centrality=args.compute_centrality,
+        compute_small_world=args.compute_small_world,
+        random_seed=args.random_seed,
         output_dir=args.output_dir,
         domain=args.domain,
         domain_config=args.domain_config,

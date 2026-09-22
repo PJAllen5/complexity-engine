@@ -26,6 +26,8 @@ NETWORK_METRIC_KEYS = frozenset(
         "mean_in_degree",
         "mean_out_degree",
         "n_strongly_connected_components",
+        "small_world_sigma",
+        "small_world_omega",
     }
 )
 
@@ -155,3 +157,42 @@ def compute_node_centrality(graph: nx.Graph) -> pd.DataFrame:
             for node in graph.nodes()
         ]
     )
+
+
+def compute_small_world_metrics(graph: nx.Graph, seed: int = 42) -> dict[str, float]:
+    """Compute the small-world sigma (Humphries & Gurney 2008) and omega (Telesford
+    et al. 2011) coefficients, comparing the graph's clustering and path length
+    against randomized reference graphs with the same degree sequence.
+
+    sigma > 1 indicates small-world structure (elevated clustering without a
+    proportional increase in path length, relative to a matched random graph).
+    omega near 0 indicates small-world structure; negative is lattice-like;
+    positive is random-like.
+
+    Requires an undirected, *fully connected* graph with >= 4 nodes and >= 2 edges
+    -- every precondition is checked up front, returning NaN rather than computing,
+    because nx.sigma()/nx.omega() call nx.random_reference() internally, and that
+    function can hang indefinitely (confirmed empirically, not just in theory) on a
+    graph with an isolated node: its edge-rewiring search can never terminate
+    normally since a degree-0 node can never gain an edge through swaps, and the
+    retry loop that searches for a valid swap has no escape for that case. This is
+    the only place in the pipeline that could hang without this guard.
+
+    This is computationally expensive (generates several randomized reference
+    graphs) and nondeterministic without a fixed seed, so it's opt-in in
+    network_analysis.py rather than always computed.
+    """
+    empty = {"small_world_sigma": float("nan"), "small_world_omega": float("nan")}
+    if graph.is_directed():
+        return empty
+    if graph.number_of_nodes() < 4 or graph.number_of_edges() < 2:
+        return empty
+    if not nx.is_connected(graph):
+        return empty
+
+    try:
+        sigma = nx.sigma(graph, seed=seed)
+        omega = nx.omega(graph, seed=seed)
+    except nx.NetworkXError:
+        return empty
+    return {"small_world_sigma": float(sigma), "small_world_omega": float(omega)}
