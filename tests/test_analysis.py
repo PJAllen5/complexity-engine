@@ -297,3 +297,52 @@ def test_multi_signal_report_includes_mutual_information_heatmap(tmp_path):
 
     report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
     assert "![cross_signal_mutual_information](plots/cross_signal_mutual_information.png)" in report
+
+
+def test_analyze_dataset_merges_multiple_files(tmp_path):
+    df1 = pd.DataFrame({"condition": ["rest", "task"], "signal": [1.0, 10.0]})
+    df2 = pd.DataFrame({"condition": ["rest", "task"], "signal": [2.0, 11.0]})
+    path1 = tmp_path / "session1.csv"
+    path2 = tmp_path / "session2.csv"
+    df1.to_csv(path1, index=False)
+    df2.to_csv(path2, index=False)
+
+    result = analyze_dataset(
+        [path1, path2],
+        signal_cols=["signal"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    assert result["provenance"]["input_rows"] == 4
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "Data source: session1.csv, session2.csv" in report
+
+
+def test_analyze_dataset_reports_provenance(tmp_path):
+    df = pd.DataFrame(
+        {
+            "condition": ["rest", "rest", "task", None],
+            "signal": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    csv_path = tmp_path / "with_missing.csv"
+    df.to_csv(csv_path, index=False)
+
+    result = analyze_dataset(
+        csv_path,
+        signal_cols=["signal"],
+        condition_col="condition",
+        domain="physiology",
+        output_dir=tmp_path / "outputs",
+    )
+
+    assert result["provenance"]["input_rows"] == 4
+    assert result["provenance"]["rows_dropped_missing_values"] == 1
+    assert result["provenance"]["output_rows"] == 3
+
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "## Data provenance" in report
+    assert "Input rows: 4" in report
+    assert "Rows analyzed: 3" in report
