@@ -127,3 +127,20 @@ def test_run_network_analysis_cli_compute_small_world_flag(tmp_path):
     assert result.returncode == 0, result.stderr
     report = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert "### Small-world statistics" in report
+
+
+def test_run_network_analysis_cli_merges_comma_separated_data_files(tmp_path):
+    df1 = pd.DataFrame({"source": ["a", "b"], "target": ["b", "c"], "condition": ["rest", "rest"]})
+    df2 = pd.DataFrame({"source": ["c", "a"], "target": ["a", "d"], "condition": ["task", "task"]})
+    path1 = tmp_path / "session1.csv"
+    path2 = tmp_path / "session2.csv"
+    df1.to_csv(path1, index=False)
+    df2.to_csv(path2, index=False)
+    output_dir = tmp_path / "outputs"
+
+    result = _run_cli("run_network_analysis.py", ["--data", f"{path1},{path2}", "--output-dir", str(output_dir)])
+
+    assert result.returncode == 0, result.stderr
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "Data source: session1.csv, session2.csv" in report
+    assert "Input rows: 4" in report

@@ -195,3 +195,57 @@ def test_analyze_network_small_world_disabled_by_default(tmp_path):
     assert "small_world_sigma" not in result["network_metrics_summary"].columns
     report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
     assert "Small-world statistics" not in report
+
+
+def test_analyze_network_merges_multiple_files(tmp_path):
+    df1 = pd.DataFrame({"source": ["a", "b"], "target": ["b", "c"], "condition": ["rest", "rest"]})
+    df2 = pd.DataFrame({"source": ["c", "a"], "target": ["a", "d"], "condition": ["task", "task"]})
+    path1 = tmp_path / "session1.csv"
+    path2 = tmp_path / "session2.csv"
+    df1.to_csv(path1, index=False)
+    df2.to_csv(path2, index=False)
+
+    result = analyze_network([path1, path2], output_dir=tmp_path / "outputs")
+
+    assert result["provenance"]["input_rows"] == 4
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "Data source: session1.csv, session2.csv" in report
+
+
+def test_analyze_network_reports_provenance(tmp_path):
+    df = pd.DataFrame(
+        {
+            "source": ["a", None, "c"],
+            "target": ["b", "c", "a"],
+            "condition": ["rest", "rest", "rest"],
+        }
+    )
+    csv_path = tmp_path / "with_missing.csv"
+    df.to_csv(csv_path, index=False)
+
+    result = analyze_network(csv_path, condition_col=None, output_dir=tmp_path / "outputs")
+
+    assert result["provenance"]["input_rows"] == 3
+    assert result["provenance"]["rows_dropped_missing_values"] == 1
+    assert result["provenance"]["output_rows"] == 2
+
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "## Data provenance" in report
+    assert "Input rows: 3" in report
+    assert "Rows analyzed: 2" in report
+
+
+def test_analyze_network_detects_but_does_not_drop_duplicate_edges(tmp_path):
+    csv_path = _write_edge_csv(
+        tmp_path,
+        [
+            {"source": "a", "target": "b", "condition": "rest"},
+            {"source": "a", "target": "b", "condition": "rest"},
+            {"source": "b", "target": "c", "condition": "rest"},
+        ],
+    )
+
+    result = analyze_network(csv_path, condition_col=None, output_dir=tmp_path / "outputs")
+
+    assert result["provenance"]["duplicate_rows_detected"] == 1
+    assert result["provenance"]["output_rows"] == 3  # not dropped

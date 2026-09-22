@@ -11,6 +11,11 @@
 - target: The other endpoint of each edge (a node identifier).
 - weight: Optional edge weight; used for clustering and modularity, but not for shortest-path distance.
 - condition: Experimental or task condition used to compare network structure across states.
+## Data provenance
+- Input rows: 44
+- Duplicate rows detected (not removed automatically): 0
+- Rows dropped for missing values in ['source', 'target', 'condition']: 0
+- Rows analyzed: 44
 ## Network metrics
 condition  n_nodes  n_edges  density  mean_degree  avg_clustering  transitivity  modularity  avg_shortest_path_length  n_connected_components
      rest       12       24 0.363636     4.000000        0.305556      0.320000     0.19184                  1.787879                       1

@@ -59,29 +59,34 @@ For data that's naturally shaped as a graph (nodes and edges) rather than parall
 series — e.g. a functional-connectivity network — `run_network_analysis.py` runs a separate,
 parallel pipeline:
 
-1. **Ingest** a CSV/Excel edge list (`source`, `target` columns, an optional `weight` column,
-   and an optional `condition` column to compare multiple networks — e.g. `rest` vs `task`).
-   Undirected by default; pass `--directed` to treat edges as directed.
-2. **Compute network metrics** per condition (or once, for a single network): density, mean
+1. **Ingest** one or more CSV/Excel edge-list files (`source`, `target` columns, an optional
+   `weight` column, and an optional `condition` column to compare multiple networks — e.g.
+   `rest` vs `task`). Multiple files are merged if they share the same columns. Undirected by
+   default; pass `--directed` to treat edges as directed.
+2. **Clean**: drops rows missing a required value (source/target, and condition when used),
+   and detects — but does not automatically remove — exact duplicate rows, mirroring the
+   time-series pipeline's approach. Every input/dropped/output row count is recorded in a
+   "Data provenance" report section.
+3. **Compute network metrics** per condition (or once, for a single network): density, mean
    degree, average clustering, transitivity, modularity, average shortest path length, and
    number of connected components. For a directed network, also reports mean in-/out-degree
    and strongly- vs. weakly-connected component counts — see the report's note on how
    direction changes path-length and connectivity semantics.
-3. **Compute per-node centrality** (degree, betweenness, eigenvector), opt-in via
+4. **Compute per-node centrality** (degree, betweenness, eigenvector), opt-in via
    `--compute-centrality` since it's a different granularity (per-node, not per-condition)
    from the rest of the report.
-4. **Compute formal small-world statistics** (sigma and omega — Humphries & Gurney 2008;
+5. **Compute formal small-world statistics** (sigma and omega — Humphries & Gurney 2008;
    Telesford et al. 2011), opt-in via `--compute-small-world`, comparing the network's
    clustering/path length against randomized reference graphs of the same degree sequence
    rather than leaving "is this small-world?" to eyeballing `avg_clustering` and
    `avg_shortest_path_length`. Only well-defined for an undirected, fully connected network
    with at least 4 nodes — NaN otherwise. Off by default since it's the most computationally
    expensive metric in either pipeline.
-5. **Visualize** the degree distribution per condition as a small-multiple bar chart.
-6. **Interpret domain-aware**, grounded in the network-science literature already in the
+6. **Visualize** the degree distribution per condition as a small-multiple bar chart.
+7. **Interpret domain-aware**, grounded in the network-science literature already in the
    bibliography: small-world structure (Watts & Strogatz, 1998), scale-free/hub structure
    (Barabási & Albert, 1999), and community/modularity structure (Newman, 2010).
-7. **Report**: writes `network_metrics_summary.csv`, optionally `node_centrality.csv`, the
+8. **Report**: writes `network_metrics_summary.csv`, optionally `node_centrality.csv`, the
    degree-distribution PNG, and a `report.md`.
 
 This is a genuinely different data shape from the time-series pipeline (rows are edges, not
@@ -176,5 +181,5 @@ out of sync with the bibliography (wrong year, removed entry, typo'd author).
 
 Tracked as GitHub issues rather than duplicated here — see the repo's issue tracker for the
 full history (closed "Stage N" issues document what's shipped) and open issues for what's
-next: bringing the network pipeline's ingestion up to parity with the time-series pipeline's
-multi-file/duplicate-detection/provenance handling, and unit-handling design.
+next: unit-handling design (deliberately deferred until a real messy dataset motivates a
+concrete approach).
