@@ -144,3 +144,19 @@ def test_run_network_analysis_cli_merges_comma_separated_data_files(tmp_path):
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "Data source: session1.csv, session2.csv" in report
     assert "Input rows: 4" in report
+
+
+def test_run_analysis_cli_writes_html_report(tmp_path):
+    result = _run_cli("run_analysis.py", ["--output-dir", str(tmp_path)])
+
+    assert result.returncode == 0, result.stderr
+    assert "Saved self-contained HTML report to:" in result.stdout
+    assert (tmp_path / "report.html").exists()
+
+
+def test_run_network_analysis_cli_writes_html_report(tmp_path):
+    result = _run_cli("run_network_analysis.py", ["--output-dir", str(tmp_path)])
+
+    assert result.returncode == 0, result.stderr
+    assert "Saved self-contained HTML report to:" in result.stdout
+    assert (tmp_path / "report.html").exists()

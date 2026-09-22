@@ -12,6 +12,7 @@ import pandas as pd
 from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
 from .metrics import _METRIC_FUNCTIONS, compare_conditions, compute_complexity_metrics, descriptive_stats, mutual_information
 from .plots import plot_complexity_metrics, plot_condition_comparison, plot_mutual_information_heatmap
+from .report_export import export_html_report
 
 _SIGNIFICANCE_ALPHA = 0.05
 
@@ -99,6 +100,35 @@ def _describe_data_source(data_path: str | Path | Sequence[str | Path]) -> str:
     if isinstance(data_path, (str, Path)):
         return Path(data_path).name
     return ", ".join(Path(p).name for p in data_path)
+
+
+def _as_code_block(text: str) -> list[str]:
+    """Wrap fixed-width text (e.g. a DataFrame.to_string() dump) in a fenced code
+    block, so it renders as a monospace, whitespace-preserved block in Markdown/HTML
+    instead of collapsing into an unreadable paragraph.
+    """
+    return ["```", text, "```", ""]
+
+
+def _collapse_blank_lines(lines: list[str]) -> list[str]:
+    """Keep at most one blank line in a row, and drop leading/trailing blanks.
+
+    A single blank line between blocks is meaningful in Markdown (it's what
+    separates a list from unrelated following text -- without it, a paragraph
+    right after a list item gets parsed as a "lazy continuation" of that list
+    item instead of its own block), so report generation shouldn't strip every
+    blank line the way earlier versions did.
+    """
+    collapsed: list[str] = []
+    for line in lines:
+        if line == "" and (not collapsed or collapsed[-1] == ""):
+            continue
+        collapsed.append(line)
+    while collapsed and collapsed[0] == "":
+        collapsed.pop(0)
+    while collapsed and collapsed[-1] == "":
+        collapsed.pop()
+    return collapsed
 
 
 def resolve_signal_columns(df: pd.DataFrame, signal_cols: str | list[str] | None = None) -> list[str]:
@@ -438,32 +468,16 @@ def analyze_dataset(
     )
     report_lines.append(f"- Rows analyzed: {provenance['output_rows']}")
     report_lines.append("")
-    report_lines.extend(
-        [
-            "## Condition summary",
-            summary.to_string(index=False),
-            "",
-            "## Complexity metrics",
-            complexity.to_string(index=False),
-            "",
-        ]
-    )
+    report_lines.append("## Condition summary")
+    report_lines.extend(_as_code_block(summary.to_string(index=False)))
+    report_lines.append("## Complexity metrics")
+    report_lines.extend(_as_code_block(complexity.to_string(index=False)))
     if not significance.empty:
-        report_lines.extend(
-            [
-                "## Statistical significance",
-                significance.to_string(index=False),
-                "",
-            ]
-        )
+        report_lines.append("## Statistical significance")
+        report_lines.extend(_as_code_block(significance.to_string(index=False)))
     if not cross_signal.empty:
-        report_lines.extend(
-            [
-                "## Cross-signal metrics",
-                cross_signal.to_string(index=False),
-                "",
-            ]
-        )
+        report_lines.append("## Cross-signal metrics")
+        report_lines.extend(_as_code_block(cross_signal.to_string(index=False)))
     if plot_paths:
         report_lines.append("## Visualizations")
         for label, path in plot_paths.items():
@@ -473,8 +487,9 @@ def analyze_dataset(
     report_lines.extend(
         _generate_interpretation_lines(complexity, domain_profile, cross_signal_df=cross_signal, significance_df=significance)
     )
-    report_lines = [line for line in report_lines if line]
+    report_lines = _collapse_blank_lines(report_lines)
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
+    html_path = export_html_report(report_path)
 
     return {
         "data": df,
@@ -492,4 +507,5 @@ def analyze_dataset(
         "cross_signal_csv": str(cross_signal_path),
         "plot_paths": plot_paths,
         "report_md": str(report_path),
+        "report_html": html_path,
     }

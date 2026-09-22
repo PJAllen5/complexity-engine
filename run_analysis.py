@@ -44,6 +44,7 @@ def main() -> None:
     print(f"Saved summary to: {result['summary_csv']}")
     print(f"Saved complexity metrics to: {result['complexity_csv']}")
     print(f"Saved report to: {result['report_md']}")
+    print(f"Saved self-contained HTML report to: {result['report_html']}")
 
 
 if __name__ == "__main__":
