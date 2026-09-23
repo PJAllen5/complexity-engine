@@ -1,5 +1,5 @@
 condition,subject_id,signal,n_samples,sample_entropy,spectral_entropy,dfa_exponent
-rest,s01,signal,15,0.0,0.436067432115308,
-rest,s02,signal,15,0.0,0.48392813894288267,
+rest,s01,signal,15,,0.436067432115308,
+rest,s02,signal,15,,0.48392813894288267,
 task,s01,signal,15,0.40546510810816444,0.2309992074459655,
-task,s02,signal,15,0.0,0.3462172064514643,
+task,s02,signal,15,,0.3462172064514643,

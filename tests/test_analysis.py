@@ -461,3 +461,16 @@ def test_unknown_unit_column_raises(tmp_path):
 
     with pytest.raises(ValueError, match="Unit column"):
         analyze_dataset(csv_path, signal_cols=["signal"], unit_cols=["not_a_column"], output_dir=tmp_path / "outputs")
+
+
+def test_report_explains_undefined_metrics(tmp_path):
+    csv_path = _write_signal_csv(tmp_path, [1.0, 2.0, 1.5, 2.5], [10.0, 12.0, 9.0, 11.0])
+
+    result = analyze_dataset(csv_path, signal_cols=["signal"], output_dir=tmp_path / "outputs")
+
+    assert result["complexity_summary"]["dfa_exponent"].isna().all()
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "Undefined metrics:" in report
+    assert "dfa_exponent is undefined for 2 of 2 recording(s)" in report
+    assert "dfa_exponent needs at least 16 samples" in report
+    assert "dfa exponent is" not in report
