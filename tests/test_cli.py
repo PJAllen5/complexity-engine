@@ -160,3 +160,12 @@ def test_run_network_analysis_cli_writes_html_report(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Saved self-contained HTML report to:" in result.stdout
     assert (tmp_path / "report.html").exists()
+
+
+def test_run_analysis_cli_unit_cols_none_disables_per_unit_metrics(tmp_path):
+    result = _run_cli("run_analysis.py", ["--unit-cols", "none", "--output-dir", str(tmp_path)])
+
+    assert result.returncode == 0, result.stderr
+    assert "Recording unit columns: none" in result.stdout
+    complexity = pd.read_csv(tmp_path / "complexity_summary.csv")
+    assert (complexity["n_units"] == 1).all()

@@ -6,6 +6,7 @@
 - Data source: physio_example.csv
 - Signal columns: signal
 - Condition column: condition
+- Recording unit columns: subject_id
 
 ## Domain signal roles
 - primary_signal: Main cognitive or neural signal associated with attentional state.
@@ -28,10 +29,12 @@ condition  mean_signal  std_signal  min_signal  max_signal  median signal
 ```
 
 ## Complexity metrics
+Complexity metrics are computed separately within each recording unit (subject_id; 15 samples per unit), sorted by timestamp, then averaged across units per condition (n_units). Per-unit values are in complexity_by_unit.csv.
+
 ```
-condition signal  n_samples      mean      std  min  max  variance  sample_entropy  spectral_entropy  dfa_exponent
-     rest signal         30 73.736667 1.192356 71.3 75.8  1.421713        0.000000          0.664821      0.625685
-     task signal         30 82.796667 2.994879 77.9 88.3  8.969299        0.980829          0.496929     -0.166528
+condition signal  n_samples  n_units      mean      std  min  max  variance  sample_entropy  spectral_entropy  dfa_exponent
+     rest signal         30        2 73.736667 1.192356 71.3 75.8  1.421713        0.000000          0.459998           NaN
+     task signal         30        2 82.796667 2.994879 77.9 88.3  8.969299        0.202733          0.288608           NaN
 ```
 
 ## Statistical significance
@@ -58,5 +61,4 @@ Welch's t-test checks whether the raw signal's mean level differs between two co
 
 - sample entropy is higher in task than in rest. Attention can be framed as precision-weighting of expected sensory or task-relevant signals (Friston, 2010; Clark, 2013; Hohwy, 2013); reduced entropy when attention is engaged is consistent with tighter predictive precision around the task, while elevated entropy may reflect divided attention or reduced top-down control rather than richer processing.
 - spectral entropy is lower in task than in rest. A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.
-- dfa exponent is lower in task than in rest. Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity.
 - Raw signal differs significantly between rest and task (Welch's t-test p<0.001, Cohen's d=-3.97).

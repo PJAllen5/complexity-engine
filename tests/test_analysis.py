@@ -365,3 +365,99 @@ def test_analyze_dataset_writes_self_contained_html_report(tmp_path):
     html = html_path.read_text(encoding="utf-8")
     assert "<h1>Complexity Analysis Report</h1>" in html
     assert "data:image/png;base64," in html
+
+
+def _two_unit_frame(base, offset=100.0):
+    """Two subjects per condition; s2 is s1 shifted by a large offset, so joining them end
+    to end inserts an artificial jump that per-unit computation must not see."""
+    n = len(base)
+    return pd.DataFrame(
+        {
+            "subject_id": (["s1"] * n + ["s2"] * n) * 2,
+            "condition": ["rest"] * (2 * n) + ["task"] * (2 * n),
+            "timestamp": list(range(n)) * 4,
+            "signal": list(base) + [v + offset for v in base] + list(base) + [v + offset for v in base],
+        }
+    )
+
+
+def test_complexity_metrics_are_computed_per_unit_not_across_joins(tmp_path):
+    import numpy as np
+
+    base = np.random.default_rng(0).normal(size=64).tolist()
+    csv_path = tmp_path / "units.csv"
+    _two_unit_frame(base).to_csv(csv_path, index=False)
+
+    result = analyze_dataset(csv_path, signal_cols=["signal"], output_dir=tmp_path / "outputs")
+
+    assert result["unit_columns"] == ["subject_id"]
+    expected = compute_complexity_metrics(np.asarray(base))
+    rest = result["complexity_summary"].set_index("condition").loc["rest"]
+    assert rest["n_units"] == 2
+    assert rest["n_samples"] == 128
+    for metric, value in expected.items():
+        assert rest[metric] == pytest.approx(value)
+
+    by_unit = result["complexity_by_unit"]
+    assert len(by_unit) == 4
+    assert set(by_unit["subject_id"]) == {"s1", "s2"}
+    assert (tmp_path / "outputs" / "complexity_by_unit.csv").exists()
+
+    joined = compute_complexity_metrics(np.asarray(base + [v + 100.0 for v in base]))
+    assert rest["dfa_exponent"] != pytest.approx(joined["dfa_exponent"])
+
+
+def test_rows_are_sorted_by_time_within_each_unit(tmp_path):
+    import numpy as np
+
+    base = np.random.default_rng(1).normal(size=64).tolist()
+    ordered = _two_unit_frame(base)
+    shuffled = ordered.sample(frac=1.0, random_state=0)
+    ordered.to_csv(tmp_path / "ordered.csv", index=False)
+    shuffled.to_csv(tmp_path / "shuffled.csv", index=False)
+
+    a = analyze_dataset(tmp_path / "ordered.csv", signal_cols=["signal"], output_dir=tmp_path / "a")
+    b = analyze_dataset(tmp_path / "shuffled.csv", signal_cols=["signal"], output_dir=tmp_path / "b")
+
+    assert a["time_column"] == "timestamp"
+    pd.testing.assert_frame_equal(a["complexity_summary"], b["complexity_summary"])
+
+
+def test_empty_unit_cols_treats_each_condition_as_one_recording(tmp_path):
+    import numpy as np
+
+    base = np.random.default_rng(2).normal(size=64).tolist()
+    csv_path = tmp_path / "units.csv"
+    _two_unit_frame(base).to_csv(csv_path, index=False)
+
+    result = analyze_dataset(csv_path, signal_cols=["signal"], unit_cols=[], output_dir=tmp_path / "outputs")
+
+    assert result["unit_columns"] == []
+    assert (result["complexity_summary"]["n_units"] == 1).all()
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "No recording unit columns were used" in report
+
+
+def test_nested_unit_columns_are_combined(tmp_path):
+    df = pd.DataFrame(
+        {
+            "subject_id": ["s1"] * 8 + ["s2"] * 8,
+            "trial": ([1] * 4 + [2] * 4) * 2,
+            "condition": ["rest"] * 16,
+            "signal": [float(i % 5) for i in range(16)],
+        }
+    )
+    csv_path = tmp_path / "nested.csv"
+    df.to_csv(csv_path, index=False)
+
+    result = analyze_dataset(csv_path, signal_cols=["signal"], output_dir=tmp_path / "outputs")
+
+    assert result["unit_columns"] == ["subject_id", "trial"]
+    assert result["complexity_summary"]["n_units"].iloc[0] == 4
+
+
+def test_unknown_unit_column_raises(tmp_path):
+    csv_path = _write_signal_csv(tmp_path, [1.0, 2.0, 1.5, 2.5], [10.0, 12.0, 9.0, 11.0])
+
+    with pytest.raises(ValueError, match="Unit column"):
+        analyze_dataset(csv_path, signal_cols=["signal"], unit_cols=["not_a_column"], output_dir=tmp_path / "outputs")

@@ -60,6 +60,12 @@ _METADATA_COLUMNS = {
     "source_file",
 }
 
+# Columns that identify one independent recording; all present ones are used together,
+# since trials and sessions are typically nested within a subject.
+_UNIT_COLUMN_CANDIDATES = ("subject_id", "subject", "participant", "session", "trial")
+
+_TIME_COLUMN_CANDIDATES = ("timestamp", "time", "timepoint")
+
 
 def _load_single_file(path: Path) -> pd.DataFrame:
     suffix = path.suffix.lower()
@@ -186,23 +192,104 @@ def summarize_condition(df: pd.DataFrame, signal_col: str, condition_col: str = 
     return summary.rename(columns={"mean": "mean_signal", "std": "std_signal", "min": "min_signal", "max": "max_signal"})
 
 
+def resolve_unit_columns(
+    df: pd.DataFrame,
+    unit_cols: str | Sequence[str] | None = None,
+    condition_col: str = "condition",
+) -> list[str]:
+    """Return the columns that identify one independent recording (subject, trial, ...).
+
+    None auto-detects any of _UNIT_COLUMN_CANDIDATES present in the data (matched
+    case-insensitively); an explicit empty list disables per-unit computation, treating
+    each condition as a single recording.
+    """
+    if unit_cols is None:
+        by_lower = {str(col).lower(): col for col in df.columns}
+        resolved = [by_lower[name] for name in _UNIT_COLUMN_CANDIDATES if name in by_lower]
+    else:
+        resolved = [unit_cols] if isinstance(unit_cols, str) else list(unit_cols)
+        missing = [col for col in resolved if col not in df.columns]
+        if missing:
+            raise ValueError(f"Unit column(s) not found in the dataset: {', '.join(missing)}")
+    return [col for col in resolved if col != condition_col]
+
+
+def resolve_time_column(df: pd.DataFrame) -> str | None:
+    by_lower = {str(col).lower(): col for col in df.columns}
+    return next((by_lower[name] for name in _TIME_COLUMN_CANDIDATES if name in by_lower), None)
+
+
+def _time_sort_key(values: pd.Series) -> pd.Series:
+    if pd.api.types.is_numeric_dtype(values):
+        return values
+    try:
+        return pd.to_datetime(values)
+    except (ValueError, TypeError):
+        return values.astype(str)
+
+
+def unit_complexity_summary(
+    df: pd.DataFrame,
+    signal_col: str,
+    condition_col: str = "condition",
+    metrics: Sequence[str] | None = None,
+    unit_cols: Sequence[str] = (),
+    time_col: str | None = None,
+) -> pd.DataFrame:
+    """Compute complexity metrics separately within each recording unit of each condition.
+
+    Sample entropy, spectral entropy, and DFA depend on sample order, so joining several
+    independent recordings (subjects, trials, sessions) end to end would insert an
+    artificial jump at every join that the metrics read as real dynamics. Rows within a
+    unit are sorted by time_col when given; otherwise file order is kept.
+    """
+    group_cols = [condition_col, *unit_cols]
+    records = []
+    for keys, group in df.groupby(group_cols, dropna=False, sort=True):
+        keys = keys if isinstance(keys, tuple) else (keys,)
+        if time_col is not None:
+            group = group.sort_values(time_col, key=_time_sort_key, kind="stable")
+        values = group[signal_col].to_numpy(dtype=float)
+        records.append(
+            {
+                "condition": keys[0],
+                **dict(zip(unit_cols, keys[1:])),
+                "signal": signal_col,
+                "n_samples": int(values.size),
+                **compute_complexity_metrics(values, metrics=metrics),
+            }
+        )
+    return pd.DataFrame.from_records(records)
+
+
 def condition_complexity_summary(
     df: pd.DataFrame,
     signal_col: str,
     condition_col: str = "condition",
     metrics: Sequence[str] | None = None,
+    unit_cols: Sequence[str] = (),
+    time_col: str | None = None,
+    unit_summary: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
+    """Per-condition complexity summary: descriptive stats pooled over every sample in the
+    condition, and each complexity metric averaged across recording units (NaN units skipped).
+    """
+    if unit_summary is None:
+        unit_summary = unit_complexity_summary(
+            df, signal_col, condition_col=condition_col, metrics=metrics, unit_cols=unit_cols, time_col=time_col
+        )
+    metric_cols = list(metrics) if metrics else list(_METRIC_FUNCTIONS)
     records = []
     for condition, group in df.groupby(condition_col, dropna=False):
-        complexity = compute_complexity_metrics(group[signal_col].to_numpy(dtype=float), metrics=metrics)
-        desc = descriptive_stats(group[signal_col].to_numpy(dtype=float))
+        units = unit_summary[unit_summary["condition"] == condition]
         records.append(
             {
                 "condition": condition,
                 "signal": signal_col,
                 "n_samples": int(group.shape[0]),
-                **desc,
-                **complexity,
+                "n_units": int(units.shape[0]),
+                **descriptive_stats(group[signal_col].to_numpy(dtype=float)),
+                **{metric: float(units[metric].mean()) for metric in metric_cols},
             }
         )
     return pd.DataFrame.from_records(records)
@@ -264,6 +351,27 @@ def condition_cross_signal_summary(
                 }
             )
     return pd.DataFrame.from_records(records)
+
+
+def _unit_method_note(unit_complexity: pd.DataFrame, unit_cols: Sequence[str], time_col: str | None) -> str:
+    order = f"sorted by {time_col}" if time_col else "in file order (no time column found)"
+    if not unit_cols:
+        return (
+            "Complexity metrics are computed on each condition's samples as a single series, "
+            f"{order}. No recording unit columns were used, so if a condition contains several "
+            "independent recordings they are joined end to end, which distorts order-dependent "
+            "metrics (sample entropy, spectral entropy, DFA)."
+        )
+    lengths = unit_complexity["n_samples"] if not unit_complexity.empty else pd.Series(dtype=int)
+    length_text = (
+        f"{int(lengths.min())}-{int(lengths.max())} samples per unit" if lengths.min() != lengths.max()
+        else f"{int(lengths.min())} samples per unit"
+    ) if not lengths.empty else "no units"
+    return (
+        f"Complexity metrics are computed separately within each recording unit ({', '.join(unit_cols)}; "
+        f"{length_text}), {order}, then averaged across units per condition (n_units). "
+        "Per-unit values are in complexity_by_unit.csv."
+    )
 
 
 def _missing_expected_columns(df: pd.DataFrame, domain_profile: DomainProfile) -> list[str]:
@@ -377,6 +485,7 @@ def analyze_dataset(
     output_dir: str | Path = "outputs",
     domain: str | None = None,
     domain_config: str | Path | None = None,
+    unit_cols: str | Sequence[str] | None = None,
 ) -> dict[str, pd.DataFrame | str]:
     load_domain_profiles(domain_config)
     domain_profile = get_domain_profile(domain)
@@ -385,26 +494,32 @@ def analyze_dataset(
     selected_signals = resolve_signal_columns(df, signal_cols=signal_cols if signal_cols is not None else signal_col)
     missing_columns = _missing_expected_columns(df, domain_profile)
     df, provenance = clean_dataset(df, required_cols=[*selected_signals, condition_col])
+    selected_units = resolve_unit_columns(df, unit_cols, condition_col=condition_col)
+    time_col = resolve_time_column(df)
 
     summary_frames = []
     complexity_frames = []
+    unit_complexity_frames = []
     significance_frames = []
     for signal in selected_signals:
         if signal not in df.columns:
             raise ValueError(f"Signal column '{signal}' was not found in the dataset.")
         summary_frames.append(summarize_condition(df, signal_col=signal, condition_col=condition_col).assign(signal=signal))
+        metrics = domain_profile.recommended_metrics or None
+        unit_complexity = unit_complexity_summary(
+            df, signal_col=signal, condition_col=condition_col, metrics=metrics, unit_cols=selected_units, time_col=time_col
+        )
+        unit_complexity_frames.append(unit_complexity)
         complexity_frames.append(
             condition_complexity_summary(
-                df,
-                signal_col=signal,
-                condition_col=condition_col,
-                metrics=domain_profile.recommended_metrics or None,
+                df, signal_col=signal, condition_col=condition_col, metrics=metrics, unit_summary=unit_complexity
             )
         )
         significance_frames.append(condition_significance_summary(df, signal_col=signal, condition_col=condition_col))
 
     summary = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
     complexity = pd.concat(complexity_frames, ignore_index=True) if complexity_frames else pd.DataFrame()
+    unit_complexity = pd.concat(unit_complexity_frames, ignore_index=True) if unit_complexity_frames else pd.DataFrame()
     significance = pd.concat(significance_frames, ignore_index=True) if significance_frames else pd.DataFrame()
     cross_signal = condition_cross_signal_summary(df, selected_signals, condition_col=condition_col)
 
@@ -413,10 +528,12 @@ def analyze_dataset(
 
     summary_path = output_dir / "condition_summary.csv"
     complexity_path = output_dir / "complexity_summary.csv"
+    unit_complexity_path = output_dir / "complexity_by_unit.csv"
     significance_path = output_dir / "significance_summary.csv"
     cross_signal_path = output_dir / "cross_signal_summary.csv"
     summary.to_csv(summary_path, index=False)
     complexity.to_csv(complexity_path, index=False)
+    unit_complexity.to_csv(unit_complexity_path, index=False)
     significance.to_csv(significance_path, index=False)
     cross_signal.to_csv(cross_signal_path, index=False)
 
@@ -446,6 +563,7 @@ def analyze_dataset(
         f"- Data source: {_describe_data_source(data_path)}",
         f"- Signal columns: {', '.join(selected_signals)}",
         f"- Condition column: {condition_col}",
+        f"- Recording unit columns: {', '.join(selected_units) if selected_units else 'none'}",
         "",
     ]
     if domain_profile.signal_roles:
@@ -471,6 +589,8 @@ def analyze_dataset(
     report_lines.append("## Condition summary")
     report_lines.extend(_as_code_block(summary.to_string(index=False)))
     report_lines.append("## Complexity metrics")
+    report_lines.append(_unit_method_note(unit_complexity, selected_units, time_col))
+    report_lines.append("")
     report_lines.extend(_as_code_block(complexity.to_string(index=False)))
     if not significance.empty:
         report_lines.append("## Statistical significance")
@@ -499,10 +619,14 @@ def analyze_dataset(
         "provenance": provenance,
         "condition_summary": summary,
         "complexity_summary": complexity,
+        "complexity_by_unit": unit_complexity,
+        "unit_columns": selected_units,
+        "time_column": time_col,
         "significance_summary": significance,
         "cross_signal_summary": cross_signal,
         "summary_csv": str(summary_path),
         "complexity_csv": str(complexity_path),
+        "complexity_by_unit_csv": str(unit_complexity_path),
         "significance_csv": str(significance_path),
         "cross_signal_csv": str(cross_signal_path),
         "plot_paths": plot_paths,
