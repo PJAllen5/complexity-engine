@@ -44,6 +44,12 @@ _ENTROPY_COMPLEXITY_CAVEAT = (
     '"complex" the underlying system is.'
 )
 
+_UNDEFINED_METRIC_REASONS = {
+    "sample_entropy": "needs at least 5 samples and at least one pair of matching templates at lengths 2 and 3",
+    "spectral_entropy": "needs at least 2 samples and a non-constant signal",
+    "dfa_exponent": "needs at least 16 samples and non-zero fluctuation at every scale",
+}
+
 _METADATA_COLUMNS = {
     "subject_id",
     "subject",
@@ -374,6 +380,41 @@ def _unit_method_note(unit_complexity: pd.DataFrame, unit_cols: Sequence[str], t
     )
 
 
+def _undefined_metric_lines(unit_complexity: pd.DataFrame, metrics: Sequence[str]) -> list[str]:
+    """Explain every metric that was undefined (NaN) for some recordings, so a blank or
+    missing value is never mistaken for a real result."""
+    lines = []
+    if unit_complexity.empty:
+        return lines
+    for metric in metrics:
+        if metric not in unit_complexity.columns:
+            continue
+        for signal, rows in unit_complexity.groupby("signal", sort=True):
+            n_undefined = int(rows[metric].isna().sum())
+            if not n_undefined:
+                continue
+            reason = _UNDEFINED_METRIC_REASONS.get(metric, "could not be computed")
+            all_undefined = rows.groupby("condition", sort=True)[metric].apply(lambda v: v.isna().all())
+            empty_conditions = [str(c) for c in all_undefined[all_undefined].index]
+            if len(empty_conditions) == all_undefined.size:
+                consequence = "it has no value for any condition"
+            elif empty_conditions:
+                consequence = (
+                    f"it has no value for {', '.join(empty_conditions)}, and the remaining averages "
+                    "use only the recordings where it is defined"
+                )
+            else:
+                consequence = "per-condition averages use only the recordings where it is defined"
+            lines.append(
+                f"- {metric} is undefined for {n_undefined} of {rows.shape[0]} recording(s) of {signal} "
+                f"({metric} {reason}); {consequence}."
+            )
+    if lines:
+        lines.insert(0, "Undefined metrics:")
+        lines.append("")
+    return lines
+
+
 def _missing_expected_columns(df: pd.DataFrame, domain_profile: DomainProfile) -> list[str]:
     return [col for col in domain_profile.expected_columns if col not in df.columns]
 
@@ -592,6 +633,9 @@ def analyze_dataset(
     report_lines.append(_unit_method_note(unit_complexity, selected_units, time_col))
     report_lines.append("")
     report_lines.extend(_as_code_block(complexity.to_string(index=False)))
+    report_lines.extend(
+        _undefined_metric_lines(unit_complexity, domain_profile.recommended_metrics or list(_METRIC_FUNCTIONS))
+    )
     if not significance.empty:
         report_lines.append("## Statistical significance")
         report_lines.extend(_as_code_block(significance.to_string(index=False)))
