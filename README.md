@@ -27,7 +27,12 @@ built on that foundation.
 3. **Summarize** each signal by condition (mean, std, min, max, median).
 4. **Compute complexity metrics** per condition — sample entropy, spectral entropy, and a DFA
    (detrended fluctuation analysis) scaling exponent — restricted to whichever metrics the
-   active domain profile recommends.
+   active domain profile recommends. These metrics depend on sample order, so they're computed
+   separately within each independent recording (subject, trial, session — auto-detected from
+   `subject_id`/`subject`/`participant`/`session`/`trial`, or set with `--unit-cols`), sorted by
+   a `timestamp`/`time`/`timepoint` column when present, then averaged across recordings per
+   condition. Joining recordings end to end would insert artificial jumps that the metrics
+   would read as real dynamics. Per-recording values are written to `complexity_by_unit.csv`.
 5. **Test statistical significance** between every pair of conditions on the raw signal
    (Welch's t-test + Cohen's d effect size), so directional differences can be read alongside
    whether they're distinguishable from sampling noise.
@@ -42,7 +47,7 @@ built on that foundation.
 8. **Visualize**: generates a condition-comparison box plot and a complexity-metrics bar
    chart per signal, plus a mutual-information heatmap when multiple signals are selected —
    saved as PNGs under `outputs/plots/` and embedded in `report.md`.
-9. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`,
+9. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`, `complexity_by_unit.csv`,
    `significance_summary.csv`, `cross_signal_summary.csv`, the plot PNGs, a human-readable
    `report.md`, and a self-contained `report.html` (same content, styled, with the plots
    base64-inlined into the single file) to an output directory.
@@ -145,6 +150,10 @@ python run_network_analysis.py \
 
 # --data also accepts a comma-separated list of files (e.g. one per session) to merge:
 python run_analysis.py --data session1.csv,session2.csv --signal-cols signal
+
+# Recording units are auto-detected; override them, or pass `none` to treat each
+# condition as a single recording:
+python run_analysis.py --unit-cols subject_id,trial
 ```
 
 Run the test suite with:
