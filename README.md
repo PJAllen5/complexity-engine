@@ -122,7 +122,8 @@ complexity-engine/
 │   ├── domain_profiles.yaml         # user-facing domain definitions, both pipelines
 │   └── domain_profiles.json
 ├── data/
-│   ├── physio_example.csv           # sample dataset for the time-series pipeline
+│   ├── physio_example.csv           # synthetic sample dataset for the time-series pipeline
+│   ├── make_physio_example.py       # seeded generator for physio_example.csv
 │   └── network_example.csv          # sample edge list for the network pipeline
 ├── outputs/                         # generated CSV summaries, plots/, and report.md
 ├── tests/                           # pytest suite

@@ -23,10 +23,16 @@ def descriptive_stats(signal: np.ndarray) -> dict[str, float]:
 
 
 def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
-    """Compute sample entropy for a one-dimensional time series."""
+    """Compute sample entropy for a one-dimensional time series.
+
+    Returns NaN when sample entropy is undefined: the series is too short to form
+    templates, or no template pairs match at length m or m + 1 (-log(0) and 0/0). A
+    constant signal returns 0.0, since every template matches -- it is genuinely
+    perfectly regular, not a failed computation.
+    """
     data = np.asarray(signal, dtype=float)
     if data.size < 2 * m + 1:
-        return 0.0
+        return np.nan
 
     data_std = np.std(data)
     tol = r * data_std if data_std > 0 else 0.0
@@ -45,10 +51,8 @@ def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
     b_m = count_matches(m)
     a_m = count_matches(m + 1)
 
-    if b_m == 0:
-        return 0.0
-    if a_m == 0:
-        return 0.0
+    if b_m == 0 or a_m == 0:
+        return np.nan
 
     return float(-np.log(a_m / b_m))
 
@@ -63,16 +67,19 @@ def spectral_entropy(signal: np.ndarray) -> float:
     gave a normalized entropy around 0.15 while power (correctly) gives ~0.0006,
     matching antropy almost exactly. Squaring makes the distribution more peaked
     around a signal's dominant frequency, which is the whole point of the metric.
+
+    Returns NaN for fewer than 2 samples or a constant signal (no spectral power to
+    distribute), rather than 0.0, which would read as "one dominant frequency."
     """
     data = np.asarray(signal, dtype=float)
     if data.size < 2:
-        return 0.0
+        return np.nan
 
     centered = data - np.mean(data)
     power = np.abs(np.fft.rfft(centered)) ** 2
     power = power[power > 0]
     if power.size == 0:
-        return 0.0
+        return np.nan
 
     probabilities = power / np.sum(power)
     entropy = -np.sum(probabilities * np.log2(probabilities))
@@ -83,7 +90,11 @@ def spectral_entropy(signal: np.ndarray) -> float:
 
 
 def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
-    """Approximate the detrended fluctuation analysis exponent."""
+    """Approximate the detrended fluctuation analysis exponent.
+
+    Returns NaN for fewer than 16 samples or when fluctuation is zero at some scale
+    (e.g. a constant or perfectly linear signal), where the log-log slope is undefined.
+    """
     data = np.asarray(signal, dtype=float)
     if data.size < 16:
         return np.nan
@@ -110,7 +121,7 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
         if residuals:
             rms.append(np.mean(residuals))
 
-    if len(rms) < 2:
+    if len(rms) < 2 or np.any(np.asarray(rms) <= 0):
         return np.nan
 
     log_scales = np.log(scales[: len(rms)])

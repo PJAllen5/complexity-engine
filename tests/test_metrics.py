@@ -7,7 +7,7 @@ from complexity_engine.analysis import (
     condition_significance_summary,
     resolve_signal_columns,
 )
-from complexity_engine.metrics import compare_conditions, mutual_information, sample_entropy, spectral_entropy
+from complexity_engine.metrics import compare_conditions, dfa_exponent, mutual_information, sample_entropy, spectral_entropy
 
 
 def test_sample_entropy_known_value():
@@ -119,3 +119,26 @@ def test_condition_significance_summary_covers_all_condition_pairs():
 
     assert len(result) == 3  # a-b, a-c, b-c
     assert set(zip(result["condition_a"], result["condition_b"])) == {("a", "b"), ("a", "c"), ("b", "c")}
+
+
+def test_sample_entropy_is_nan_when_too_short():
+    assert np.isnan(sample_entropy(np.array([1.0, 2.0, 3.0, 4.0])))
+
+
+def test_sample_entropy_is_nan_when_no_templates_match():
+    # Strictly increasing with a tiny tolerance: no two templates are within r * std.
+    assert np.isnan(sample_entropy(np.arange(20, dtype=float) ** 2, r=0.01))
+
+
+def test_sample_entropy_of_constant_signal_is_zero():
+    # Every template matches, so a constant signal is genuinely perfectly regular.
+    assert sample_entropy(np.full(20, 3.0)) == 0.0
+
+
+def test_spectral_entropy_is_nan_when_undefined():
+    assert np.isnan(spectral_entropy(np.array([1.0])))
+    assert np.isnan(spectral_entropy(np.full(32, 3.0)))
+
+
+def test_dfa_exponent_is_nan_for_constant_signal():
+    assert np.isnan(dfa_exponent(np.full(64, 3.0)))
