@@ -16,35 +16,31 @@
 Note: the 'attention' domain profile expects columns [signal, condition, trial]; missing from this dataset: trial.
 
 ## Data provenance
-- Input rows: 60
+- Input rows: 1800
 - Duplicate rows detected (not removed automatically): 0
 - Rows dropped for missing values in ['signal', 'condition']: 0
-- Rows analyzed: 60
+- Rows analyzed: 1800
 
 ## Condition summary
 ```
 condition  mean_signal  std_signal  min_signal  max_signal  median signal
-     rest    73.736667    1.192356        71.3        75.8   73.85 signal
-     task    82.796667    2.994879        77.9        88.3   83.15 signal
+     rest    72.254667    3.310537        64.2        81.2    72.3 signal
+     task    84.331333    2.116774        78.8        90.1    84.3 signal
 ```
 
 ## Complexity metrics
-Complexity metrics are computed separately within each recording unit (subject_id; 15 samples per unit), sorted by timestamp, then averaged across units per condition (n_units). Per-unit values are in complexity_by_unit.csv.
+Complexity metrics are computed separately within each recording unit (subject_id; 300 samples per unit), sorted by timestamp, then averaged across units per condition (n_units). Per-unit values are in complexity_by_unit.csv.
 
 ```
 condition signal  n_samples  n_units      mean      std  min  max  variance  sample_entropy  spectral_entropy  dfa_exponent
-     rest signal         30        2 73.736667 1.192356 71.3 75.8  1.421713             NaN          0.459998           NaN
-     task signal         30        2 82.796667 2.994879 77.9 88.3  8.969299        0.405465          0.288608           NaN
+     rest signal        900        3 72.254667 3.310537 64.2 81.2 10.959656        1.607469          0.481321      1.215614
+     task signal        900        3 84.331333 2.116774 78.8 90.1  4.480730        2.016142          0.816005      0.813603
 ```
-
-Undefined metrics:
-- sample_entropy is undefined for 3 of 4 recording(s) of signal (sample_entropy needs at least 5 samples and at least one pair of matching templates at lengths 2 and 3); it has no value for rest, and the remaining averages use only the recordings where it is defined.
-- dfa_exponent is undefined for 4 of 4 recording(s) of signal (dfa_exponent needs at least 16 samples and non-zero fluctuation at every scale); it has no value for any condition.
 
 ## Statistical significance
 ```
-signal condition_a condition_b  n_a  n_b    mean_a    mean_b  t_statistic      p_value  cohens_d
-signal        rest        task   30   30 73.736667 82.796667   -15.394299 6.556483e-18 -3.974791
+signal condition_a condition_b  n_a  n_b    mean_a    mean_b  t_statistic  p_value  cohens_d
+signal        rest        task  900  900 72.254667 84.331333   -92.201771      0.0 -4.346433
 ```
 
 ## Visualizations
@@ -63,5 +59,7 @@ Welch's t-test checks whether the raw signal's mean level differs between two co
 - spectral_entropy: A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.
 - dfa_exponent: Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity.
 
-- spectral entropy is lower in task than in rest. A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.
-- Raw signal differs significantly between rest and task (Welch's t-test p<0.001, Cohen's d=-3.97).
+- sample entropy is higher in task than in rest. Attention can be framed as precision-weighting of expected sensory or task-relevant signals (Friston, 2010; Clark, 2013; Hohwy, 2013); reduced entropy when attention is engaged is consistent with tighter predictive precision around the task, while elevated entropy may reflect divided attention or reduced top-down control rather than richer processing.
+- spectral entropy is higher in task than in rest. A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.
+- dfa exponent is lower in task than in rest. Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity.
+- Raw signal differs significantly between rest and task (Welch's t-test p<0.001, Cohen's d=-4.35).
