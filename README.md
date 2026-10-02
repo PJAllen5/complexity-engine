@@ -26,8 +26,10 @@ built on that foundation.
    and surfaced in a "Data provenance" report section, so cleaning is never silent.
 3. **Summarize** each signal by condition (mean, std, min, max, median).
 4. **Compute complexity metrics** per condition — sample entropy, spectral entropy, and a DFA
-   (detrended fluctuation analysis) scaling exponent — restricted to whichever metrics the
-   active domain profile recommends. These metrics depend on sample order, so they're computed
+   (detrended fluctuation analysis) scaling exponent, plus opt-in short-range (4–16 samples)
+   and long-range (16–64 samples) DFA exponents (`dfa_short_term`, `dfa_long_term`) for
+   signals whose correlation structure changes with scale — restricted to whichever metrics
+   the active domain profile recommends. These metrics depend on sample order, so they're computed
    separately within each independent recording (subject, trial, session — auto-detected from
    `subject_id`/`subject`/`participant`/`session`/`trial`, or set with `--unit-cols`), sorted by
    a `timestamp`/`time`/`timepoint` column when present, then averaged across recordings per
@@ -57,7 +59,8 @@ built on that foundation.
    `report.md`, and a self-contained `report.html` (same content, styled, with the plots
    base64-inlined into the single file) to an output directory.
 
-Domain profiles for this pipeline (`physiology`, `cognitive`, `stress`, `attention`, and any
+Domain profiles for this pipeline (`physiology`, `cognitive`, `stress`, `attention`,
+`heart_rate_variability`, and any
 custom ones you add) live in `config/domain_profiles.yaml` (or `.json`) and can be extended or
 overridden without touching Python code. A profile's `recommended_metrics` is validated
 against the pipeline's known metrics as soon as the domain is looked up — before any data is
@@ -129,8 +132,11 @@ complexity-engine/
 ├── data/
 │   ├── physio_example.csv           # synthetic sample dataset for the time-series pipeline
 │   ├── make_physio_example.py       # seeded generator for physio_example.csv
+│   ├── fetch_fantasia.py            # downloads real heart-rate data for validation (not committed)
 │   └── network_example.csv          # sample edge list for the network pipeline
 ├── outputs/                         # generated CSV summaries, plots/, and report.md
+├── docs/
+│   └── validation/fantasia.md       # known-answer validation on real heart-rate data
 ├── tests/                           # pytest suite
 └── papers/
     └── references.bib               # curated complexity science / information theory / cognitive science bibliography
@@ -176,6 +182,24 @@ you install the validation-only dependencies:
 ```bash
 pip install -r requirements-dev.txt
 ```
+
+## Validation on real data
+
+Checking that the metrics compute the right numbers isn't the same as checking that the
+pipeline reaches the right conclusions on real data. `tests/test_fantasia_validation.py`
+runs the whole pipeline on the PhysioNet Fantasia database (20 young and 20 elderly
+healthy subjects, 120 minutes of resting heart rate each) and checks the age effects
+published for that data. It's skipped unless you download the data first:
+
+```bash
+python data/fetch_fantasia.py   # ~0.7 MB of beat annotations -> data/external/fantasia_rr.csv
+python -m pytest -q tests/test_fantasia_validation.py
+```
+
+The pipeline reproduces lower sample entropy and a higher short-range DFA exponent in the
+elderly. It does not reproduce the published drop in the long-range DFA exponent, which
+turned out to depend on the window it's fitted over. See
+[docs/validation/fantasia.md](docs/validation/fantasia.md) for the full results.
 
 ## Literature base
 

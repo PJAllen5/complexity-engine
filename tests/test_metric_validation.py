@@ -109,6 +109,17 @@ def test_dfa_exponent_matches_reference_implementations_on_average():
     assert ours == pytest.approx(theirs_nolds, abs=0.1)
 
 
+
+def test_short_range_dfa_matches_nolds_on_white_noise():
+    # Over small windows, DFA is biased above the theoretical 0.5 for white noise; the
+    # reference implementation shares that bias, so match it rather than 0.5. Averaging
+    # each window's RMS instead of one RMS over all residuals once inflated this to ~0.64.
+    scales = np.unique(np.array([int(s) for s in np.geomspace(4, 16, num=8)], dtype=int))
+    seeds = range(10)
+    ours = np.mean([dfa_exponent(_white_noise(n=4000, seed=s), min_scale=4, max_scale=16) for s in seeds])
+    theirs = np.mean([nolds.dfa(_white_noise(n=4000, seed=s), nvals=list(scales)) for s in seeds])
+    assert ours == pytest.approx(theirs, abs=0.02)
+
 # --- mutual_information -----------------------------------------------------------
 # No off-the-shelf library computes histogram-based MI between two continuous
 # signals the way we do, so this cross-checks the underlying discrete MI formula

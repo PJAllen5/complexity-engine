@@ -12,6 +12,7 @@ import pandas as pd
 from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
 from .metrics import (
     _METRIC_FUNCTIONS,
+    DEFAULT_METRICS,
     compare_conditions,
     compute_complexity_metrics,
     descriptive_stats,
@@ -46,6 +47,8 @@ _DEFAULT_METRIC_EXPLANATIONS = {
     "sample_entropy": "Sample entropy captures temporal irregularity; higher values suggest more unpredictability.",
     "spectral_entropy": "Spectral entropy captures the distribution of frequency content; higher values suggest broader frequency activity.",
     "dfa_exponent": "DFA exponent estimates long-range correlation structure; values near 0.5 often indicate random-like structure, while higher values suggest stronger persistence.",
+    "dfa_short_term": "Short-range DFA exponent (windows of 4-16 samples); ~0.5 is uncorrelated noise, ~1.0 is 1/f-like scaling, and ~1.5 is random-walk-like (Brownian) fluctuation.",
+    "dfa_long_term": "Long-range DFA exponent (windows of 16-64 samples); ~0.5 is uncorrelated noise, ~1.0 is 1/f-like scaling, and ~1.5 is random-walk-like (Brownian) fluctuation.",
 }
 
 _DEFAULT_CROSS_SIGNAL_EXPLANATION = (
@@ -66,6 +69,8 @@ _UNDEFINED_METRIC_REASONS = {
     "sample_entropy": "needs at least 5 samples and at least one pair of matching templates at lengths 2 and 3",
     "spectral_entropy": "needs at least 2 samples and a non-constant signal",
     "dfa_exponent": "needs at least 16 samples and non-zero fluctuation at every scale",
+    "dfa_short_term": "needs at least 64 samples and non-zero fluctuation at every scale",
+    "dfa_long_term": "needs at least 256 samples and non-zero fluctuation at every scale",
 }
 
 _METADATA_COLUMNS = {
@@ -312,7 +317,7 @@ def condition_complexity_summary(
         unit_summary = unit_complexity_summary(
             df, signal_col, condition_col=condition_col, metrics=metrics, unit_cols=unit_cols, time_col=time_col
         )
-    metric_cols = list(metrics) if metrics else list(_METRIC_FUNCTIONS)
+    metric_cols = list(metrics) if metrics else list(DEFAULT_METRICS)
     records = []
     for condition, group in df.groupby(condition_col, dropna=False):
         units = unit_summary[unit_summary["condition"] == condition]
@@ -347,7 +352,7 @@ def condition_significance_summary(
     count replaced by its autocorrelation-adjusted effective sample size; n_a / n_b report
     the number of independent observations the test used.
     """
-    metric_cols = [m for m in (metrics or _METRIC_FUNCTIONS) if unit_summary is not None and m in unit_summary.columns]
+    metric_cols = [m for m in (metrics or DEFAULT_METRICS) if unit_summary is not None and m in unit_summary.columns]
     series_by_condition: dict = {}
     for condition, _, values in _iter_unit_series(df, signal_col, condition_col, unit_cols, time_col):
         series_by_condition.setdefault(condition, []).append(values)
@@ -541,7 +546,7 @@ def _generate_interpretation_lines(
         lines.append(_SIGNIFICANCE_EXPLANATION)
         lines.append("")
 
-    metrics_of_interest = list(domain_profile.recommended_metrics) or list(_DEFAULT_METRIC_EXPLANATIONS)
+    metrics_of_interest = list(domain_profile.recommended_metrics) or list(DEFAULT_METRICS)
     for metric in metrics_of_interest:
         explanation = domain_profile.interpretation_rules.get(metric) or _DEFAULT_METRIC_EXPLANATIONS.get(metric)
         if explanation:
@@ -678,7 +683,7 @@ def analyze_dataset(
         comparison_path = plot_condition_comparison(df, signal, condition_col, plots_dir / f"{signal}_condition_comparison.png")
         plot_paths[f"{signal}_condition_comparison"] = comparison_path
         metrics_plot_path = plot_complexity_metrics(
-            complexity, signal, domain_profile.recommended_metrics or list(_DEFAULT_METRIC_EXPLANATIONS), plots_dir / f"{signal}_complexity_metrics.png"
+            complexity, signal, domain_profile.recommended_metrics or list(DEFAULT_METRICS), plots_dir / f"{signal}_complexity_metrics.png"
         )
         if metrics_plot_path:
             plot_paths[f"{signal}_complexity_metrics"] = metrics_plot_path
@@ -727,7 +732,7 @@ def analyze_dataset(
     report_lines.append("")
     report_lines.extend(_as_code_block(complexity.to_string(index=False)))
     report_lines.extend(
-        _undefined_metric_lines(unit_complexity, domain_profile.recommended_metrics or list(_METRIC_FUNCTIONS))
+        _undefined_metric_lines(unit_complexity, domain_profile.recommended_metrics or list(DEFAULT_METRICS))
     )
     if not significance.empty:
         report_lines.append("## Statistical significance")

@@ -33,8 +33,8 @@ Complexity metrics are computed separately within each recording unit (subject_i
 
 ```
 condition signal  n_samples  n_units      mean      std  min  max  variance  sample_entropy  spectral_entropy  dfa_exponent
-     rest signal        900        3 72.254667 3.310537 64.2 81.2 10.959656        1.607469          0.481321      1.215614
-     task signal        900        3 84.331333 2.116774 78.8 90.1  4.480730        2.016142          0.816005      0.813603
+     rest signal        900        3 72.254667 3.310537 64.2 81.2 10.959656        1.607469          0.481321      1.243296
+     task signal        900        3 84.331333 2.116774 78.8 90.1  4.480730        2.016142          0.816005      0.787843
 ```
 
 ## Statistical significance
@@ -43,7 +43,7 @@ signal condition_a condition_b          measure                      test  n_a  
 signal        rest        task      signal_mean welch_on_recording_values  3.0  3.0 72.254667 84.331333    -5.645168 0.007016  -4.609261
 signal        rest        task   sample_entropy welch_on_recording_values  3.0  3.0  1.607469  2.016142    -3.469878 0.028059  -2.833144
 signal        rest        task spectral_entropy welch_on_recording_values  3.0  3.0  0.481321  0.816005   -18.236326 0.002422 -14.889897
-signal        rest        task     dfa_exponent welch_on_recording_values  3.0  3.0  1.215614  0.813603     6.698337 0.002991   5.469169
+signal        rest        task     dfa_exponent welch_on_recording_values  3.0  3.0  1.243296  0.787843     7.434849 0.001871   6.070529
 ```
 
 ## Visualizations
@@ -68,4 +68,4 @@ Welch's t-test checks whether two conditions differ beyond what sampling variabi
 - Mean signal level differs significantly between rest and task (Welch's t-test on 3 vs 3 recordings, p=0.007, Cohen's d=-4.61).
 - sample entropy differs significantly between rest and task (Welch's t-test on 3 vs 3 recordings, p=0.028, Cohen's d=-2.83).
 - spectral entropy differs significantly between rest and task (Welch's t-test on 3 vs 3 recordings, p=0.002, Cohen's d=-14.89).
-- dfa exponent differs significantly between rest and task (Welch's t-test on 3 vs 3 recordings, p=0.003, Cohen's d=5.47).
+- dfa exponent differs significantly between rest and task (Welch's t-test on 3 vs 3 recordings, p=0.002, Cohen's d=6.07).
