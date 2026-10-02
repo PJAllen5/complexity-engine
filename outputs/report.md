@@ -39,8 +39,11 @@ condition signal  n_samples  n_units      mean      std  min  max  variance  sam
 
 ## Statistical significance
 ```
-signal condition_a condition_b  n_a  n_b    mean_a    mean_b  t_statistic  p_value  cohens_d
-signal        rest        task  900  900 72.254667 84.331333   -92.201771      0.0 -4.346433
+signal condition_a condition_b          measure                      test  n_a  n_b    mean_a    mean_b  t_statistic  p_value   cohens_d
+signal        rest        task      signal_mean welch_on_recording_values  3.0  3.0 72.254667 84.331333    -5.645168 0.007016  -4.609261
+signal        rest        task   sample_entropy welch_on_recording_values  3.0  3.0  1.607469  2.016142    -3.469878 0.028059  -2.833144
+signal        rest        task spectral_entropy welch_on_recording_values  3.0  3.0  0.481321  0.816005   -18.236326 0.002422 -14.889897
+signal        rest        task     dfa_exponent welch_on_recording_values  3.0  3.0  1.215614  0.813603     6.698337 0.002991   5.469169
 ```
 
 ## Visualizations
@@ -53,7 +56,7 @@ Guiding question: Does the monitored signal show tighter predictive precision wh
 
 Methodological note: entropy-based metrics quantify unpredictability, not complexity in the fuller sense used in complexity science (Crutchfield & Young, 1989; Gell-Mann & Lloyd, 1996). A maximally random signal has high entropy but little structured organization, so read the entropy changes below as changes in signal regularity, not as a direct verdict on how "complex" the underlying system is.
 
-Welch's t-test checks whether the raw signal's mean level differs between two conditions beyond what sampling variability alone would produce; Cohen's d expresses the size of that difference in standard-deviation units (roughly: ~0.2 small, ~0.5 medium, ~0.8 large). This tests the raw signal, not the complexity metrics above, which are single summary values per condition rather than per-sample distributions.
+Welch's t-test checks whether two conditions differ beyond what sampling variability alone would produce; Cohen's d expresses the size of that difference in standard-deviation units (roughly: ~0.2 small, ~0.5 medium, ~0.8 large). Consecutive samples of a time series are not independent observations, and neither are samples from the same recording, so the raw samples are never tested as if they were. When each condition has at least two recordings, the test compares one value per recording (its mean signal level, and each complexity metric), so n is the number of recordings. Recordings of the same subjects in both conditions are treated as unpaired, which is conservative. When a condition has only one recording, the raw samples are tested with each recording's sample size reduced to the number of independent samples its lag-1 autocorrelation implies (Zwiers & von Storch, 1995); this correction is approximate and can still overstate significance for strongly persistent signals, so treat those p-values as a lower bound.
 
 - sample_entropy: Attention can be framed as precision-weighting of expected sensory or task-relevant signals (Friston, 2010; Clark, 2013; Hohwy, 2013); reduced entropy when attention is engaged is consistent with tighter predictive precision around the task, while elevated entropy may reflect divided attention or reduced top-down control rather than richer processing.
 - spectral_entropy: A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.
@@ -62,4 +65,7 @@ Welch's t-test checks whether the raw signal's mean level differs between two co
 - sample entropy is higher in task than in rest. Attention can be framed as precision-weighting of expected sensory or task-relevant signals (Friston, 2010; Clark, 2013; Hohwy, 2013); reduced entropy when attention is engaged is consistent with tighter predictive precision around the task, while elevated entropy may reflect divided attention or reduced top-down control rather than richer processing.
 - spectral entropy is higher in task than in rest. A shift toward broader frequency engagement when attention is recruited is consistent with multiple task-relevant processes being active concurrently (Rumelhart et al., 1986); a narrower spectrum can indicate a single dominant rhythm capturing the bulk of signal energy.
 - dfa exponent is lower in task than in rest. Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity.
-- Raw signal differs significantly between rest and task (Welch's t-test p<0.001, Cohen's d=-4.35).
+- Mean signal level differs significantly between rest and task (Welch's t-test on 3 vs 3 recordings, p=0.007, Cohen's d=-4.61).
+- sample entropy differs significantly between rest and task (Welch's t-test on 3 vs 3 recordings, p=0.028, Cohen's d=-2.83).
+- spectral entropy differs significantly between rest and task (Welch's t-test on 3 vs 3 recordings, p=0.002, Cohen's d=-14.89).
+- dfa exponent differs significantly between rest and task (Welch's t-test on 3 vs 3 recordings, p=0.003, Cohen's d=5.47).

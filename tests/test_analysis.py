@@ -257,6 +257,8 @@ def test_report_includes_statistical_significance(tmp_path):
     assert "## Statistical significance" in report
     assert "differs significantly" in report
     assert "Welch's t-test" in report
+    # One recording per condition, so the report must flag the approximate autocorrelation correction.
+    assert "autocorrelation-adjusted" in report
 
 
 def test_report_includes_visualizations(tmp_path):

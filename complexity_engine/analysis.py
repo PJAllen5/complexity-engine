@@ -10,19 +10,37 @@ import numpy as np
 import pandas as pd
 
 from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
-from .metrics import _METRIC_FUNCTIONS, compare_conditions, compute_complexity_metrics, descriptive_stats, mutual_information
+from .metrics import (
+    _METRIC_FUNCTIONS,
+    compare_conditions,
+    compute_complexity_metrics,
+    descriptive_stats,
+    effective_sample_size,
+    mutual_information,
+)
 from .plots import plot_complexity_metrics, plot_condition_comparison, plot_mutual_information_heatmap
 from .report_export import export_html_report
 
 _SIGNIFICANCE_ALPHA = 0.05
 
 _SIGNIFICANCE_EXPLANATION = (
-    "Welch's t-test checks whether the raw signal's mean level differs between two conditions "
-    "beyond what sampling variability alone would produce; Cohen's d expresses the size of that "
-    "difference in standard-deviation units (roughly: ~0.2 small, ~0.5 medium, ~0.8 large). This "
-    "tests the raw signal, not the complexity metrics above, which are single summary values per "
-    "condition rather than per-sample distributions."
+    "Welch's t-test checks whether two conditions differ beyond what sampling variability alone "
+    "would produce; Cohen's d expresses the size of that difference in standard-deviation units "
+    "(roughly: ~0.2 small, ~0.5 medium, ~0.8 large). Consecutive samples of a time series are not "
+    "independent observations, and neither are samples from the same recording, so the raw samples "
+    "are never tested as if they were. When each condition has at least two recordings, the test "
+    "compares one value per recording (its mean signal level, and each complexity metric), so n is "
+    "the number of recordings. Recordings of the same subjects in both conditions are treated as "
+    "unpaired, which is conservative. When a condition has only one recording, the raw samples are "
+    "tested with each recording's sample size reduced to the number of independent samples its "
+    "lag-1 autocorrelation implies (Zwiers & von Storch, 1995); this correction is approximate and "
+    "can still overstate significance for strongly persistent signals, so treat those p-values as a "
+    "lower bound."
 )
+
+_TEST_RECORDING_VALUES = "welch_on_recording_values"
+_TEST_AUTOCORRELATION_ADJUSTED = "welch_autocorrelation_adjusted"
+_SIGNAL_LEVEL_MEASURE = "signal_mean"
 
 _DEFAULT_METRIC_EXPLANATIONS = {
     "sample_entropy": "Sample entropy captures temporal irregularity; higher values suggest more unpredictability.",
@@ -234,6 +252,21 @@ def _time_sort_key(values: pd.Series) -> pd.Series:
         return values.astype(str)
 
 
+def _iter_unit_series(
+    df: pd.DataFrame,
+    signal_col: str,
+    condition_col: str,
+    unit_cols: Sequence[str],
+    time_col: str | None,
+):
+    """Yield (condition, unit_keys, values) for each recording unit, sorted by time_col when given."""
+    for keys, group in df.groupby([condition_col, *unit_cols], dropna=False, sort=True):
+        keys = keys if isinstance(keys, tuple) else (keys,)
+        if time_col is not None:
+            group = group.sort_values(time_col, key=_time_sort_key, kind="stable")
+        yield keys[0], keys[1:], group[signal_col].to_numpy(dtype=float)
+
+
 def unit_complexity_summary(
     df: pd.DataFrame,
     signal_col: str,
@@ -249,17 +282,12 @@ def unit_complexity_summary(
     artificial jump at every join that the metrics read as real dynamics. Rows within a
     unit are sorted by time_col when given; otherwise file order is kept.
     """
-    group_cols = [condition_col, *unit_cols]
     records = []
-    for keys, group in df.groupby(group_cols, dropna=False, sort=True):
-        keys = keys if isinstance(keys, tuple) else (keys,)
-        if time_col is not None:
-            group = group.sort_values(time_col, key=_time_sort_key, kind="stable")
-        values = group[signal_col].to_numpy(dtype=float)
+    for condition, unit_keys, values in _iter_unit_series(df, signal_col, condition_col, unit_cols, time_col):
         records.append(
             {
-                "condition": keys[0],
-                **dict(zip(unit_cols, keys[1:])),
+                "condition": condition,
+                **dict(zip(unit_cols, unit_keys)),
                 "signal": signal_col,
                 "n_samples": int(values.size),
                 **compute_complexity_metrics(values, metrics=metrics),
@@ -305,24 +333,68 @@ def condition_significance_summary(
     df: pd.DataFrame,
     signal_col: str,
     condition_col: str = "condition",
+    unit_cols: Sequence[str] = (),
+    time_col: str | None = None,
+    unit_summary: pd.DataFrame | None = None,
+    metrics: Sequence[str] | None = None,
 ) -> pd.DataFrame:
-    """Compare the raw signal between every pair of conditions with Welch's t-test + Cohen's d."""
+    """Compare every pair of conditions with Welch's t-test + Cohen's d, without treating
+    autocorrelated time-series samples as independent observations.
+
+    When both conditions have at least two recording units, each unit contributes one value:
+    its mean signal level and, given unit_summary, each complexity metric (NaN units skipped).
+    Otherwise only the signal level is tested, on the raw samples, with each unit's sample
+    count replaced by its autocorrelation-adjusted effective sample size; n_a / n_b report
+    the number of independent observations the test used.
+    """
+    metric_cols = [m for m in (metrics or _METRIC_FUNCTIONS) if unit_summary is not None and m in unit_summary.columns]
+    series_by_condition: dict = {}
+    for condition, _, values in _iter_unit_series(df, signal_col, condition_col, unit_cols, time_col):
+        series_by_condition.setdefault(condition, []).append(values)
+
     records = []
     conditions = sorted(df[condition_col].dropna().unique(), key=str)
     for condition_a, condition_b in itertools.combinations(conditions, 2):
-        values_a = df.loc[df[condition_col] == condition_a, signal_col].to_numpy(dtype=float)
-        values_b = df.loc[df[condition_col] == condition_b, signal_col].to_numpy(dtype=float)
-        comparison = compare_conditions(values_a, values_b)
+        units_a = series_by_condition.get(condition_a, [])
+        units_b = series_by_condition.get(condition_b, [])
+        pair = {"signal": signal_col, "condition_a": condition_a, "condition_b": condition_b}
+
+        if unit_cols and len(units_a) >= 2 and len(units_b) >= 2:
+            measures = {_SIGNAL_LEVEL_MEASURE: ([np.mean(v) for v in units_a], [np.mean(v) for v in units_b])}
+            for metric in metric_cols:
+                values = unit_summary.loc[unit_summary["condition"] == condition_a, metric].dropna().to_numpy(dtype=float)
+                other = unit_summary.loc[unit_summary["condition"] == condition_b, metric].dropna().to_numpy(dtype=float)
+                measures[metric] = (values, other)
+            for measure, (values_a, values_b) in measures.items():
+                values_a, values_b = np.asarray(values_a, dtype=float), np.asarray(values_b, dtype=float)
+                records.append(
+                    {
+                        **pair,
+                        "measure": measure,
+                        "test": _TEST_RECORDING_VALUES,
+                        "n_a": float(values_a.size),
+                        "n_b": float(values_b.size),
+                        "mean_a": float(np.mean(values_a)) if values_a.size else np.nan,
+                        "mean_b": float(np.mean(values_b)) if values_b.size else np.nan,
+                        **compare_conditions(values_a, values_b),
+                    }
+                )
+            continue
+
+        values_a = np.concatenate(units_a) if units_a else np.array([], dtype=float)
+        values_b = np.concatenate(units_b) if units_b else np.array([], dtype=float)
+        n_eff_a = float(sum(effective_sample_size(v) for v in units_a))
+        n_eff_b = float(sum(effective_sample_size(v) for v in units_b))
         records.append(
             {
-                "signal": signal_col,
-                "condition_a": condition_a,
-                "condition_b": condition_b,
-                "n_a": values_a.size,
-                "n_b": values_b.size,
+                **pair,
+                "measure": _SIGNAL_LEVEL_MEASURE,
+                "test": _TEST_AUTOCORRELATION_ADJUSTED,
+                "n_a": n_eff_a,
+                "n_b": n_eff_b,
                 "mean_a": float(np.mean(values_a)) if values_a.size else np.nan,
                 "mean_b": float(np.mean(values_b)) if values_b.size else np.nan,
-                **comparison,
+                **compare_conditions(values_a, values_b, n_x=n_eff_a, n_y=n_eff_b),
             }
         )
     return pd.DataFrame.from_records(records)
@@ -433,9 +505,20 @@ def _significance_lines_for_signal(signal: str, significance_df: pd.DataFrame | 
         d_text = f"{cohens_d:.2f}" if not np.isnan(cohens_d) else "n/a"
         p_text = "p<0.001" if p_value < 0.001 else f"p={p_value:.3f}"
         verdict = "differs significantly" if p_value < _SIGNIFICANCE_ALPHA else "does not differ significantly"
+        if row["measure"] == _SIGNAL_LEVEL_MEASURE:
+            subject = "Mean signal level"
+        else:
+            subject = str(row["measure"]).replace("_", " ")
+        if row["test"] == _TEST_RECORDING_VALUES:
+            basis = f"on {int(row['n_a'])} vs {int(row['n_b'])} recordings"
+        else:
+            basis = (
+                f"on raw samples with autocorrelation-adjusted n={row['n_a']:.1f} vs {row['n_b']:.1f}; "
+                "approximate, may overstate significance"
+            )
         lines.append(
-            f"- Raw signal {verdict} between {condition_a} and {condition_b} "
-            f"(Welch's t-test {p_text}, Cohen's d={d_text})."
+            f"- {subject} {verdict} between {condition_a} and {condition_b} "
+            f"(Welch's t-test {basis}, {p_text}, Cohen's d={d_text})."
         )
     return lines
 
@@ -556,7 +639,17 @@ def analyze_dataset(
                 df, signal_col=signal, condition_col=condition_col, metrics=metrics, unit_summary=unit_complexity
             )
         )
-        significance_frames.append(condition_significance_summary(df, signal_col=signal, condition_col=condition_col))
+        significance_frames.append(
+            condition_significance_summary(
+                df,
+                signal_col=signal,
+                condition_col=condition_col,
+                unit_cols=selected_units,
+                time_col=time_col,
+                unit_summary=unit_complexity,
+                metrics=metrics,
+            )
+        )
 
     summary = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
     complexity = pd.concat(complexity_frames, ignore_index=True) if complexity_frames else pd.DataFrame()
