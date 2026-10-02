@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import pytest
+from scipy import stats
 
 from complexity_engine.analysis import (
     analyze_dataset,
@@ -15,6 +17,78 @@ def test_sample_entropy_known_value():
     result = sample_entropy(data, m=2, r=0.25)
     assert np.isfinite(result)
     assert result >= 0.0
+
+
+
+def _brute_force_sample_entropy(data, m=2, r=0.2):
+    """The original O(n^2) pairwise implementation, kept as a reference for the KD-tree version."""
+    data = np.asarray(data, dtype=float)
+    tol = r * np.std(data)
+
+    def count_matches(level):
+        templates = [tuple(data[i : i + level]) for i in range(len(data) - level + 1)]
+        return sum(
+            1
+            for i in range(len(templates))
+            for j in range(i + 1, len(templates))
+            if max(abs(templates[i][k] - templates[j][k]) for k in range(level)) <= tol
+        )
+
+    b_m, a_m = count_matches(m), count_matches(m + 1)
+    return np.nan if b_m == 0 or a_m == 0 else float(-np.log(a_m / b_m))
+
+
+def _brute_force_dfa_exponent(data, min_scale=8):
+    """The original per-window np.polyfit implementation, kept as a reference for the vectorized version."""
+    data = np.asarray(data, dtype=float)
+    profile = np.cumsum(data - np.mean(data))
+    n = len(profile)
+    scales = np.unique(np.array([int(s) for s in np.geomspace(min_scale, max(8, n // 4), num=8)], dtype=int))
+    scales = scales[(scales >= 2) & (scales < n)]
+    rms = []
+    for scale in scales:
+        residuals = []
+        for idx in range(0, n - scale + 1, scale):
+            segment = profile[idx : idx + scale]
+            x = np.arange(scale)
+            residual = segment - np.polyval(np.polyfit(x, segment, 1), x)
+            residuals.append(np.sqrt(np.mean(residual**2)))
+        rms.append(np.mean(residuals))
+    slope, _ = np.polyfit(np.log(scales), np.log(rms), 1)
+    return float(slope)
+
+
+def _regression_series():
+    rng = np.random.default_rng(42)
+    return {
+        "white_noise": rng.standard_normal(600),
+        "random_walk": np.cumsum(rng.standard_normal(600)),
+        "sine_plus_noise": np.sin(np.linspace(0, 30, 600)) + 0.1 * rng.standard_normal(600),
+        # Rounded values put many template distances exactly on the tolerance boundary.
+        "rounded_noise_with_ties": np.round(rng.standard_normal(600), 1),
+        "short": rng.standard_normal(17),
+    }
+
+
+def test_sample_entropy_matches_brute_force_reference_exactly():
+    for name, series in _regression_series().items():
+        for r in (0.1, 0.2, 0.5):
+            expected = _brute_force_sample_entropy(series, m=2, r=r)
+            actual = sample_entropy(series, m=2, r=r)
+            assert (np.isnan(expected) and np.isnan(actual)) or actual == expected, (name, r)
+
+
+def test_dfa_exponent_matches_per_window_polyfit_reference():
+    for name, series in _regression_series().items():
+        assert dfa_exponent(series) == pytest.approx(_brute_force_dfa_exponent(series), abs=1e-10), name
+
+
+def test_sample_entropy_handles_long_series_near_theoretical_value():
+    # For i.i.d. Gaussian noise, SampEn(m, r) = -ln P(|X - Y| <= r*sigma) with X - Y ~ N(0, 2 sigma^2),
+    # independent of m. 100,000 samples was impractical with the original pairwise implementation.
+    x = np.random.default_rng(7).standard_normal(100_000)
+    expected = -np.log(2 * stats.norm.cdf(0.2 / np.sqrt(2)) - 1)
+    assert sample_entropy(x) == pytest.approx(expected, abs=0.02)
 
 
 def test_spectral_entropy_nonnegative():
