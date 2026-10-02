@@ -6,6 +6,7 @@ from collections.abc import Sequence
 
 import numpy as np
 from scipy import stats
+from scipy.spatial import cKDTree
 
 
 def descriptive_stats(signal: np.ndarray) -> dict[str, float]:
@@ -40,13 +41,15 @@ def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
         return 0.0
 
     def count_matches(level: int) -> int:
-        templates = [tuple(data[i : i + level]) for i in range(len(data) - level + 1)]
-        matches = 0
-        for i in range(len(templates)):
-            for j in range(i + 1, len(templates)):
-                if max(abs(templates[i][k] - templates[j][k]) for k in range(level)) <= tol:
-                    matches += 1
-        return matches
+        # Pairs of distinct templates within tol under the Chebyshev (max-abs) distance.
+        # A KD-tree counts them without comparing every pair, so run time no longer grows
+        # with the square of the series length; the count is identical to a brute-force
+        # pairwise comparison (see tests/test_metrics.py).
+        templates = np.lib.stride_tricks.sliding_window_view(data, level)
+        tree = cKDTree(templates)
+        # count_neighbors counts ordered pairs, including each template with itself.
+        ordered_pairs = int(tree.count_neighbors(tree, tol, p=np.inf))
+        return (ordered_pairs - len(templates)) // 2
 
     b_m = count_matches(m)
     a_m = count_matches(m + 1)
@@ -89,6 +92,22 @@ def spectral_entropy(signal: np.ndarray) -> float:
     return float(entropy / max_entropy)
 
 
+def _mean_detrended_rms(profile: np.ndarray, scale: int) -> float:
+    """Mean RMS residual after removing a least-squares line from each non-overlapping
+    window of `scale` samples (a trailing partial window is dropped).
+
+    Fits every window at once in closed form rather than calling np.polyfit per window.
+    """
+    n_windows = len(profile) // scale
+    windows = profile[: n_windows * scale].reshape(n_windows, scale)
+    x = np.arange(scale, dtype=float)
+    x_centered = x - x.mean()
+    windows_centered = windows - windows.mean(axis=1, keepdims=True)
+    slopes = windows_centered @ x_centered / (x_centered @ x_centered)
+    residuals = windows_centered - np.outer(slopes, x_centered)
+    return float(np.mean(np.sqrt(np.mean(residuals**2, axis=1))))
+
+
 def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
     """Approximate the detrended fluctuation analysis exponent.
 
@@ -108,18 +127,7 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
     if scales.size < 2:
         return np.nan
 
-    rms = []
-    for scale in scales:
-        residuals = []
-        for idx in range(0, n - scale + 1, scale):
-            segment = profile[idx : idx + scale]
-            x = np.arange(scale)
-            coeffs = np.polyfit(x, segment, 1)
-            trend = np.polyval(coeffs, x)
-            residual = segment - trend
-            residuals.append(np.sqrt(np.mean(residual**2)))
-        if residuals:
-            rms.append(np.mean(residuals))
+    rms = [_mean_detrended_rms(profile, int(scale)) for scale in scales]
 
     if len(rms) < 2 or np.any(np.asarray(rms) <= 0):
         return np.nan
