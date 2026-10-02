@@ -33,9 +33,14 @@ built on that foundation.
    a `timestamp`/`time`/`timepoint` column when present, then averaged across recordings per
    condition. Joining recordings end to end would insert artificial jumps that the metrics
    would read as real dynamics. Per-recording values are written to `complexity_by_unit.csv`.
-5. **Test statistical significance** between every pair of conditions on the raw signal
-   (Welch's t-test + Cohen's d effect size), so directional differences can be read alongside
-   whether they're distinguishable from sampling noise.
+5. **Test statistical significance** between every pair of conditions (Welch's t-test +
+   Cohen's d effect size), so directional differences can be read alongside whether they're
+   distinguishable from sampling noise. Time-series samples are autocorrelated and nested
+   within recordings, so they're never tested as independent observations: when each
+   condition has at least two recordings, the test compares one value per recording — its
+   mean signal level and each complexity metric. With a single recording per condition, it
+   falls back to the raw samples with each recording's sample size reduced to its AR(1)
+   effective sample size (Zwiers & von Storch, 1995), which the report flags as approximate.
 6. **Compute cross-signal coupling**: when more than one signal column is selected, pairwise
    mutual information is computed per condition, capturing how tightly signals are coupled.
 7. **Interpret domain-aware**: each domain profile supplies a guiding analysis question,

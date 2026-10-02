@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import signal as sps
 from scipy import stats
 
 from complexity_engine.analysis import (
@@ -8,8 +9,17 @@ from complexity_engine.analysis import (
     condition_cross_signal_summary,
     condition_significance_summary,
     resolve_signal_columns,
+    unit_complexity_summary,
 )
-from complexity_engine.metrics import compare_conditions, dfa_exponent, mutual_information, sample_entropy, spectral_entropy
+from complexity_engine.metrics import (
+    compare_conditions,
+    dfa_exponent,
+    effective_sample_size,
+    lag1_autocorrelation,
+    mutual_information,
+    sample_entropy,
+    spectral_entropy,
+)
 
 
 def test_sample_entropy_known_value():
@@ -193,6 +203,120 @@ def test_condition_significance_summary_covers_all_condition_pairs():
 
     assert len(result) == 3  # a-b, a-c, b-c
     assert set(zip(result["condition_a"], result["condition_b"])) == {("a", "b"), ("a", "c"), ("b", "c")}
+
+
+
+def _ar1(rng, n, rho):
+    return sps.lfilter([1.0], [1.0, -rho], rng.standard_normal(n))
+
+
+def test_compare_conditions_defaults_to_standard_welch_test():
+    rng = np.random.default_rng(3)
+    x, y = rng.normal(0.0, 1.0, 40), rng.normal(0.5, 2.0, 25)
+    expected = stats.ttest_ind(x, y, equal_var=False)
+    result = compare_conditions(x, y)
+    assert result["t_statistic"] == pytest.approx(expected.statistic)
+    assert result["p_value"] == pytest.approx(expected.pvalue)
+
+
+def test_effective_sample_size_shrinks_with_autocorrelation():
+    rng = np.random.default_rng(4)
+    white = rng.standard_normal(5000)
+    persistent = _ar1(rng, 5000, 0.9)
+    alternating = np.tile([1.0, -1.0], 50)
+
+    assert effective_sample_size(white) == pytest.approx(5000, rel=0.1)
+    # AR(1) with rho = 0.9 is worth about n * 0.1 / 1.9 independent samples.
+    assert effective_sample_size(persistent) == pytest.approx(5000 * 0.1 / 1.9, rel=0.25)
+    # Negative autocorrelation never credits a series with more than its sample count.
+    assert lag1_autocorrelation(alternating) < 0
+    assert effective_sample_size(alternating) == 100
+    assert effective_sample_size(np.full(10, 2.0)) == 10
+
+
+def test_autocorrelation_adjusted_test_keeps_false_positive_rate_near_nominal():
+    # Two conditions with no real difference, one strongly autocorrelated recording each.
+    # Treating every sample as independent rejects most of the time; the adjusted test
+    # should reject about 5% of the time.
+    rng = np.random.default_rng(5)
+    naive_rejections = adjusted_rejections = 0
+    trials = 200
+    for _ in range(trials):
+        a, b = _ar1(rng, 500, 0.9), _ar1(rng, 500, 0.9)
+        naive_rejections += compare_conditions(a, b)["p_value"] < 0.05
+        adjusted = compare_conditions(a, b, n_x=effective_sample_size(a), n_y=effective_sample_size(b))
+        adjusted_rejections += adjusted["p_value"] < 0.05
+    assert naive_rejections / trials > 0.4
+    assert adjusted_rejections / trials < 0.1
+
+
+def _subjects_frame(rng, n_subjects=4, n_samples=300, condition_effect=0.0):
+    frames = []
+    for condition, shift in (("rest", 0.0), ("task", condition_effect)):
+        for subject in range(n_subjects):
+            offset = rng.normal(0.0, 2.0)  # between-subject differences dominate
+            values = offset + shift + _ar1(rng, n_samples, 0.5)
+            frames.append(pd.DataFrame({"condition": condition, "subject_id": f"{condition}{subject}", "signal": values}))
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_significance_uses_one_value_per_recording_when_available():
+    df = _subjects_frame(np.random.default_rng(6))
+    result = condition_significance_summary(df, signal_col="signal", unit_cols=["subject_id"])
+
+    row = result.iloc[0]
+    assert row["test"] == "welch_on_recording_values"
+    assert row["measure"] == "signal_mean"
+    assert (row["n_a"], row["n_b"]) == (4, 4)
+
+
+def test_recording_level_test_avoids_pseudoreplication_false_positives():
+    rng = np.random.default_rng(7)
+    naive_rejections = recording_rejections = 0
+    trials = 100
+    for _ in range(trials):
+        df = _subjects_frame(rng)
+        naive = compare_conditions(df.loc[df["condition"] == "rest", "signal"], df.loc[df["condition"] == "task", "signal"])
+        naive_rejections += naive["p_value"] < 0.05
+        result = condition_significance_summary(df, signal_col="signal", unit_cols=["subject_id"])
+        recording_rejections += result.iloc[0]["p_value"] < 0.05
+    assert naive_rejections / trials > 0.5
+    assert recording_rejections / trials < 0.12
+
+
+def test_significance_tests_complexity_metrics_across_recordings():
+    rng = np.random.default_rng(8)
+    frames = []
+    for condition, rho in (("rest", 0.95), ("task", 0.0)):
+        for subject in range(5):
+            frames.append(
+                pd.DataFrame({"condition": condition, "subject_id": f"s{subject}", "signal": _ar1(rng, 300, rho)})
+            )
+    df = pd.concat(frames, ignore_index=True)
+    unit_summary = unit_complexity_summary(df, "signal", unit_cols=["subject_id"], metrics=["dfa_exponent"])
+
+    result = condition_significance_summary(
+        df, signal_col="signal", unit_cols=["subject_id"], unit_summary=unit_summary, metrics=["dfa_exponent"]
+    )
+
+    assert set(result["measure"]) == {"signal_mean", "dfa_exponent"}
+    dfa_row = result[result["measure"] == "dfa_exponent"].iloc[0]
+    assert dfa_row["mean_a"] > dfa_row["mean_b"]
+    assert dfa_row["p_value"] < 0.001
+
+
+def test_significance_falls_back_to_adjusted_samples_with_one_recording_per_condition():
+    rng = np.random.default_rng(9)
+    df = pd.DataFrame(
+        {
+            "condition": ["rest"] * 400 + ["task"] * 400,
+            "signal": np.concatenate([_ar1(rng, 400, 0.9), _ar1(rng, 400, 0.9)]),
+        }
+    )
+    row = condition_significance_summary(df, signal_col="signal").iloc[0]
+
+    assert row["test"] == "welch_autocorrelation_adjusted"
+    assert row["n_a"] < 100 and row["n_b"] < 100
 
 
 def test_sample_entropy_is_nan_when_too_short():

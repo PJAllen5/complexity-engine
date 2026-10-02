@@ -141,23 +141,67 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
     return float(slope)
 
 
-def compare_conditions(x: np.ndarray, y: np.ndarray) -> dict[str, float]:
+def lag1_autocorrelation(signal: np.ndarray) -> float:
+    """Sample lag-1 autocorrelation; NaN for fewer than 3 samples or a constant signal."""
+    data = np.asarray(signal, dtype=float)
+    if data.size < 3:
+        return np.nan
+    centered = data - np.mean(data)
+    denominator = np.sum(centered**2)
+    if denominator == 0:
+        return np.nan
+    return float(np.sum(centered[:-1] * centered[1:]) / denominator)
+
+
+def effective_sample_size(signal: np.ndarray) -> float:
+    """Number of independent samples an autocorrelated series is worth for estimating its mean.
+
+    Uses the AR(1) equivalent sample size n(1 - rho) / (1 + rho), with rho the lag-1
+    autocorrelation (Zwiers & von Storch, 1995). Negative or undefined rho is treated as 0,
+    so a series is never credited with more information than its sample count. The
+    correction is approximate: rho estimated from a short series is biased low, and
+    long-memory signals are more dependent than AR(1) allows, so the result can still
+    overstate the information in strongly persistent series.
+    """
+    data = np.asarray(signal, dtype=float)
+    rho = lag1_autocorrelation(data)
+    rho = 0.0 if np.isnan(rho) else max(rho, 0.0)
+    return float(data.size * (1.0 - rho) / (1.0 + rho))
+
+
+def compare_conditions(
+    x: np.ndarray, y: np.ndarray, n_x: float | None = None, n_y: float | None = None
+) -> dict[str, float]:
     """Compare two samples with Welch's t-test and Cohen's d effect size.
 
     Welch's t-test doesn't assume equal variance between groups, which suits
     comparing conditions that often differ in variability as well as level.
+
+    n_x / n_y override the number of independent observations used for the standard
+    error and degrees of freedom (e.g. an effective sample size for autocorrelated data);
+    by default they're the sample counts, which gives the standard Welch's t-test.
+    Cohen's d always uses the observed samples, since effect size doesn't depend on
+    how much independent evidence there is.
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
-    if x.size < 2 or y.size < 2:
-        return {"t_statistic": np.nan, "p_value": np.nan, "cohens_d": np.nan}
-
-    t_statistic, p_value = stats.ttest_ind(x, y, equal_var=False)
+    n_x = float(x.size) if n_x is None else float(n_x)
+    n_y = float(y.size) if n_y is None else float(n_y)
+    nan_result = {"t_statistic": np.nan, "p_value": np.nan, "cohens_d": np.nan}
+    if x.size < 2 or y.size < 2 or n_x < 2 or n_y < 2:
+        return nan_result
 
     var_x = np.var(x, ddof=1)
     var_y = np.var(y, ddof=1)
     pooled_std = np.sqrt(((x.size - 1) * var_x + (y.size - 1) * var_y) / (x.size + y.size - 2))
     cohens_d = float((np.mean(x) - np.mean(y)) / pooled_std) if pooled_std > 0 else np.nan
+
+    se_x, se_y = var_x / n_x, var_y / n_y
+    if se_x + se_y == 0:
+        return {**nan_result, "cohens_d": cohens_d}
+    t_statistic = (np.mean(x) - np.mean(y)) / np.sqrt(se_x + se_y)
+    df = (se_x + se_y) ** 2 / (se_x**2 / (n_x - 1) + se_y**2 / (n_y - 1))
+    p_value = 2 * stats.t.sf(abs(t_statistic), df)
 
     return {"t_statistic": float(t_statistic), "p_value": float(p_value), "cohens_d": cohens_d}
 
