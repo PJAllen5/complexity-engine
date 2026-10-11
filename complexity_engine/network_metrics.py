@@ -104,7 +104,7 @@ def compute_network_metrics(graph: nx.Graph) -> dict[str, float]:
         )
         n_connected_components = len(components)
 
-    communities = nx.algorithms.community.greedy_modularity_communities(graph, weight="weight" if has_weight else None)
+    communities = detect_communities(graph)
     modularity = nx.algorithms.community.modularity(graph, communities, weight="weight" if has_weight else None)
 
     degrees = [d for _, d in graph.degree()]
@@ -127,6 +127,27 @@ def compute_network_metrics(graph: nx.Graph) -> dict[str, float]:
         metrics["mean_out_degree"] = sum(out_degrees) / n_nodes
         metrics["n_strongly_connected_components"] = len(strong_components)
     return metrics
+
+
+def detect_communities(graph: nx.Graph) -> list[frozenset]:
+    """Communities found by greedy modularity maximization (Clauset, Newman & Moore), largest
+    first. Weighted when the graph has edge weights, matching how modularity is scored."""
+    if graph.number_of_nodes() == 0:
+        return []
+    has_weight = any("weight" in data for _, _, data in graph.edges(data=True))
+    communities = nx.algorithms.community.greedy_modularity_communities(graph, weight="weight" if has_weight else None)
+    return sorted(communities, key=len, reverse=True)
+
+
+def compute_node_communities(graph: nx.Graph) -> pd.DataFrame:
+    """Each node's community (0 = largest) from detect_communities(), the same partition the
+    modularity metric scores, so it can be checked against known groups in the data."""
+    records = [
+        {"node": node, "community": index, "community_size": len(members)}
+        for index, members in enumerate(detect_communities(graph))
+        for node in members
+    ]
+    return pd.DataFrame.from_records(records, columns=["node", "community", "community_size"])
 
 
 def compute_node_centrality(graph: nx.Graph) -> pd.DataFrame:

@@ -9,6 +9,7 @@ from complexity_engine.network_metrics import (
     build_graph,
     compute_network_metrics,
     compute_node_centrality,
+    compute_node_communities,
     compute_small_world_metrics,
 )
 
@@ -176,3 +177,27 @@ def test_compute_small_world_metrics_disconnected_graph_does_not_hang():
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr
     assert "OK" in result.stdout
+
+
+def _two_triangles_joined_by_a_bridge():
+    return nx.Graph([("a", "b"), ("b", "c"), ("c", "a"), ("x", "y"), ("y", "z"), ("z", "x"), ("c", "x")])
+
+
+def test_compute_node_communities_splits_two_triangles_at_the_bridge():
+    graph = _two_triangles_joined_by_a_bridge()
+    communities = compute_node_communities(graph)
+    assert list(communities.columns) == ["node", "community", "community_size"]
+    groups = communities.groupby("community")["node"].apply(frozenset)
+    assert set(groups) == {frozenset("abc"), frozenset("xyz")}
+    assert (communities["community_size"] == 3).all()
+
+
+def test_node_communities_are_the_partition_modularity_scores():
+    graph = _two_triangles_joined_by_a_bridge()
+    communities = compute_node_communities(graph).groupby("community")["node"].apply(set).tolist()
+    expected = nx.algorithms.community.modularity(graph, communities)
+    assert compute_network_metrics(graph)["modularity"] == expected
+
+
+def test_compute_node_communities_on_empty_graph():
+    assert compute_node_communities(nx.Graph()).empty

@@ -99,7 +99,9 @@ parallel pipeline:
    direction changes path-length and connectivity semantics.
 4. **Compute per-node centrality** (degree, betweenness, eigenvector), opt-in via
    `--compute-centrality` since it's a different granularity (per-node, not per-condition)
-   from the rest of the report.
+   from the rest of the report. `--compute-communities` similarly writes each node's detected
+   community (the partition modularity scores) to `node_communities.csv`, so it can be
+   compared with known groups.
 5. **Compute formal small-world statistics** (sigma and omega — Humphries & Gurney 2008;
    Telesford et al. 2011), opt-in via `--compute-small-world`, comparing the network's
    clustering/path length against randomized reference graphs of the same degree sequence
@@ -111,13 +113,14 @@ parallel pipeline:
 7. **Interpret domain-aware**, grounded in the network-science literature already in the
    bibliography: small-world structure (Watts & Strogatz, 1998), scale-free/hub structure
    (Barabási & Albert, 1999), and community/modularity structure (Newman, 2010).
-8. **Report**: writes `network_metrics_summary.csv`, optionally `node_centrality.csv`, the
+8. **Report**: writes `network_metrics_summary.csv`, optionally `node_centrality.csv` and
+   `node_communities.csv`, the
    degree-distribution PNG, a `report.md`, and a self-contained `report.html`.
 
 This is a genuinely different data shape from the time-series pipeline (rows are edges, not
 observations), so it's kept as its own entry point (`network_analysis.py` /
 `network_metrics.py`) rather than folded into `analyze_dataset()`. It reuses the same
-`DomainProfile` configuration layer — see the `network` profile in
+`DomainProfile` configuration layer — see the `network` and `social_network` profiles in
 `config/domain_profiles.yaml`.
 
 ## Repository structure
@@ -145,12 +148,14 @@ complexity-engine/
 │   ├── make_physio_example.py       # seeded generator for physio_example.csv
 │   ├── fetch_fantasia.py            # downloads real heart-rate data for validation (not committed)
 │   ├── fetch_ghcn_temperature.py    # downloads real daily temperature data for validation (not committed)
+│   ├── fetch_social_networks.py     # writes real social networks for validation (not committed)
 │   └── network_example.csv          # sample edge list for the network pipeline
 ├── outputs/                         # generated CSV summaries, plots/, and report.md
 ├── docs/
 │   └── validation/
 │       ├── fantasia.md              # known-answer validation on real heart-rate data
-│       └── ghcn_temperature.md      # known-answer validation on real climate data
+│       ├── ghcn_temperature.md      # known-answer validation on real climate data
+│       └── social_networks.md       # known-answer validation on real social networks
 ├── tests/                           # pytest suite
 └── papers/
     └── references.bib               # curated complexity science / information theory / cognitive science bibliography
@@ -227,6 +232,20 @@ The pipeline reproduces long-range persistence near the published α ≈ 0.65 at
 continental station, with a narrow spread, and higher, more varied exponents on islands.
 With only 5 island stations, the island difference is not significant (p = 0.075). See
 [docs/validation/ghcn_temperature.md](docs/validation/ghcn_temperature.md).
+
+`tests/test_social_network_validation.py` checks the network pipeline, with the
+`social_network` profile, on Zachary's karate club and the ca-GrQc co-authorship network:
+
+```bash
+python data/fetch_social_networks.py   # karate club from networkx, ~0.1 MB from SNAP -> data/external/
+python -m pytest -q tests/test_social_network_validation.py
+```
+
+ca-GrQc matches SNAP's published size, clustering, and giant component exactly, and is a
+small world as Newman (2001) found for collaboration networks. On the karate club, modularity
+matches (0.381), but the detected communities misassign 2 members against the known factions,
+one more than the published methods. See
+[docs/validation/social_networks.md](docs/validation/social_networks.md).
 
 ## Literature base
 
