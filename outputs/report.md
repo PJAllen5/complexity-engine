@@ -21,6 +21,21 @@ Note: the 'attention' domain profile expects columns [signal, condition, trial];
 - Rows dropped for missing values in ['signal', 'condition']: 0
 - Rows analyzed: 1800
 
+## Sampling
+Each unit's sampling interval is the median spacing of 'timestamp'; a gap is a spacing over 1.5 intervals. Per-unit values are in sampling_by_unit.csv.
+
+- Every unit is regularly sampled with no gaps.
+
+```
+condition subject_id  n_samples interval  coverage  n_gaps longest_gap  duplicate_times  spacing_cv  irregular
+     rest        s01        300       1s       1.0       0                            0         0.0      False
+     rest        s02        300       1s       1.0       0                            0         0.0      False
+     rest        s03        300       1s       1.0       0                            0         0.0      False
+     task        s01        300       1s       1.0       0                            0         0.0      False
+     task        s02        300       1s       1.0       0                            0         0.0      False
+     task        s03        300       1s       1.0       0                            0         0.0      False
+```
+
 ## Condition summary
 ```
 condition  mean_signal  std_signal  min_signal  max_signal  median signal

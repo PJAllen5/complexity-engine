@@ -32,9 +32,13 @@ built on that foundation.
    the active domain profile recommends. These metrics depend on sample order, so they're computed
    separately within each independent recording (subject, trial, session — auto-detected from
    `subject_id`/`subject`/`participant`/`session`/`trial`, or set with `--unit-cols`), sorted by
-   a `timestamp`/`time`/`timepoint` column when present, then averaged across recordings per
-   condition. Joining recordings end to end would insert artificial jumps that the metrics
+   a `timestamp`/`time`/`timepoint`/`date` column when present, then averaged across recordings
+   per condition. Joining recordings end to end would insert artificial jumps that the metrics
    would read as real dynamics. Per-recording values are written to `complexity_by_unit.csv`.
+   With a time column, each recording's sampling is also checked and reported
+   (`sampling_by_unit.csv`): the interval, coverage, gaps (spacings over 1.5 intervals), and
+   whether the spacing is irregular. The metrics still treat a recording's samples as
+   consecutive, so the report says how many gaps they were joined across.
 5. **Test statistical significance** between every pair of conditions (Welch's t-test +
    Cohen's d effect size), so directional differences can be read alongside whether they're
    distinguishable from sampling noise. Time-series samples are autocorrelated and nested
@@ -55,7 +59,7 @@ built on that foundation.
    chart per signal, plus a mutual-information heatmap when multiple signals are selected —
    saved as PNGs under `outputs/plots/` and embedded in `report.md`.
 9. **Report**: writes `condition_summary.csv`, `complexity_summary.csv`, `complexity_by_unit.csv`,
-   `significance_summary.csv`, `cross_signal_summary.csv`, the plot PNGs, a human-readable
+   `sampling_by_unit.csv` (when there's a time column), `significance_summary.csv`, `cross_signal_summary.csv`, the plot PNGs, a human-readable
    `report.md`, and a self-contained `report.html` (same content, styled, with the plots
    base64-inlined into the single file) to an output directory.
 

@@ -1,0 +1,7 @@
+condition,subject_id,n_samples,interval,coverage,n_gaps,longest_gap,duplicate_times,spacing_cv,irregular
+rest,s01,300,1s,1.0,0,,0,0.0,False
+rest,s02,300,1s,1.0,0,,0,0.0,False
+rest,s03,300,1s,1.0,0,,0,0.0,False
+task,s01,300,1s,1.0,0,,0,0.0,False
+task,s02,300,1s,1.0,0,,0,0.0,False
+task,s03,300,1s,1.0,0,,0,0.0,False

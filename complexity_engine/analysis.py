@@ -102,7 +102,13 @@ _METADATA_COLUMNS = {
 # since trials and sessions are typically nested within a subject.
 _UNIT_COLUMN_CANDIDATES = ("subject_id", "subject", "participant", "session", "trial")
 
-_TIME_COLUMN_CANDIDATES = ("timestamp", "time", "timepoint")
+_TIME_COLUMN_CANDIDATES = ("timestamp", "time", "timepoint", "date")
+
+# A spacing longer than this multiple of a unit's sampling interval is a gap.
+GAP_FACTOR = 1.5
+# Outside gaps, a coefficient of variation of the spacing above this marks a unit as
+# irregularly sampled rather than regularly sampled with gaps (e.g. RR intervals in clock time).
+IRREGULAR_SPACING_CV = 0.1
 
 
 def _load_single_file(path: Path) -> pd.DataFrame:
@@ -274,6 +280,123 @@ def _time_sort_key(values: pd.Series) -> pd.Series:
         return pd.to_datetime(values)
     except (ValueError, TypeError):
         return values.astype(str)
+
+
+def _format_spacing(value: float, is_datetime: bool) -> str:
+    """A spacing as text: a duration for datetime axes (seconds in, e.g. "1D", "30min"),
+    or the number itself for numeric axes, whose units the engine doesn't know."""
+    if not np.isfinite(value):
+        return ""
+    if not is_datetime:
+        return f"{value:g}"
+    for unit, seconds in (("D", 86_400), ("h", 3_600), ("min", 60)):
+        if value >= seconds and value % seconds == 0:
+            return f"{int(value // seconds)}{unit}"
+    return f"{value:g}s"
+
+
+def sampling_summary(
+    df: pd.DataFrame,
+    condition_col: str = "condition",
+    unit_cols: Sequence[str] = (),
+    time_col: str | None = None,
+) -> pd.DataFrame:
+    """Describe how each recording unit is sampled in time.
+
+    The sampling interval is the median spacing between consecutive distinct times. A gap
+    is a spacing over GAP_FACTOR intervals; coverage is the share of the interval grid
+    between the first and last time that has a sample. spacing_cv is the coefficient of
+    variation of the spacings outside gaps, and units above IRREGULAR_SPACING_CV are flagged
+    irregular. Repeated timestamps are counted, not used as spacings.
+
+    Reporting only: metrics still treat each unit's samples as consecutive. Returns an
+    empty frame when there's no time column or it can't be read as numbers or dates.
+    """
+    columns = [
+        "condition", *unit_cols, "n_samples", "interval", "coverage", "n_gaps", "longest_gap",
+        "duplicate_times", "spacing_cv", "irregular",
+    ]
+    if time_col is None:
+        return pd.DataFrame(columns=columns)
+    times = _time_sort_key(df[time_col])
+    is_datetime = pd.api.types.is_datetime64_any_dtype(times)
+    if not (is_datetime or pd.api.types.is_numeric_dtype(times)):
+        return pd.DataFrame(columns=columns)
+    numeric_times = (times - times.min()).dt.total_seconds() if is_datetime else times.astype(float)
+
+    records = []
+    grouped = numeric_times.groupby([df[condition_col], *(df[col] for col in unit_cols)], dropna=False, sort=True)
+    for keys, values in grouped:
+        keys = keys if isinstance(keys, tuple) else (keys,)
+        ordered = np.sort(values.dropna().to_numpy(dtype=float))
+        spacings = np.diff(ordered)
+        duplicates = int(np.sum(spacings == 0))
+        spacings = spacings[spacings > 0]
+        record = {"condition": keys[0], **dict(zip(unit_cols, keys[1:])), "n_samples": int(values.size)}
+        if spacings.size == 0:
+            records.append({**record, "interval": "", "coverage": np.nan, "n_gaps": 0, "longest_gap": "",
+                            "duplicate_times": duplicates, "spacing_cv": np.nan, "irregular": False})
+            continue
+        interval = float(np.median(spacings))
+        is_gap = spacings > GAP_FACTOR * interval
+        regular = spacings[~is_gap]
+        spacing_cv = float(np.std(regular) / np.mean(regular)) if regular.size > 1 else 0.0
+        expected = round((ordered[-1] - ordered[0]) / interval) + 1
+        records.append(
+            {
+                **record,
+                "interval": _format_spacing(interval, is_datetime),
+                "coverage": float(np.unique(ordered).size / expected),
+                "n_gaps": int(is_gap.sum()),
+                "longest_gap": _format_spacing(float(spacings.max()), is_datetime) if is_gap.any() else "",
+                "duplicate_times": duplicates,
+                "spacing_cv": spacing_cv,
+                "irregular": bool(spacing_cv > IRREGULAR_SPACING_CV),
+            }
+        )
+    return pd.DataFrame.from_records(records, columns=columns)
+
+
+def _sampling_lines(sampling: pd.DataFrame, time_col: str | None) -> list[str]:
+    lines = ["## Sampling"]
+    if time_col is None:
+        names = ", ".join(_TIME_COLUMN_CANDIDATES)
+        lines.append(
+            f"No time column ({names}) was found, so samples are assumed evenly spaced and "
+            "consecutive in file order, and gaps can't be detected."
+        )
+        return [*lines, ""]
+    if sampling.empty:
+        lines.append(f"The time column '{time_col}' couldn't be read as numbers or dates, so sampling wasn't checked.")
+        return [*lines, ""]
+    lines.append(
+        f"Each unit's sampling interval is the median spacing of '{time_col}'; a gap is a spacing "
+        f"over {GAP_FACTOR:g} intervals. Per-unit values are in sampling_by_unit.csv."
+    )
+    lines.append("")
+    n_units = len(sampling)
+    gappy = sampling[sampling["n_gaps"] > 0]
+    if not gappy.empty:
+        lines.append(
+            f"- {int(gappy['n_gaps'].sum())} gap(s) in {len(gappy)} of {n_units} unit(s). Metrics treat each "
+            "unit's samples as consecutive, so values on either side of a gap are joined."
+        )
+    irregular = sampling[sampling["irregular"]]
+    if not irregular.empty:
+        lines.append(
+            f"- {len(irregular)} of {n_units} unit(s) are irregularly sampled (spacing varies by more than "
+            f"{IRREGULAR_SPACING_CV:.0%} outside gaps). Metric scales count samples, not time, so this matters "
+            "only if a scale is meant as a duration."
+        )
+    duplicates = int(sampling["duplicate_times"].sum())
+    if duplicates:
+        lines.append(f"- {duplicates} repeated timestamp(s); repeated rows are kept and ordered as in the file.")
+    if gappy.empty and irregular.empty and not duplicates:
+        lines.append("- Every unit is regularly sampled with no gaps.")
+    lines.append("")
+    if n_units <= 50:
+        lines.extend(_as_code_block(sampling.to_string(index=False)))
+    return lines
 
 
 def _iter_unit_series(
@@ -702,11 +825,15 @@ def analyze_dataset(
     summary_path = output_dir / "condition_summary.csv"
     complexity_path = output_dir / "complexity_summary.csv"
     unit_complexity_path = output_dir / "complexity_by_unit.csv"
+    sampling_path = output_dir / "sampling_by_unit.csv"
     significance_path = output_dir / "significance_summary.csv"
     cross_signal_path = output_dir / "cross_signal_summary.csv"
     summary.to_csv(summary_path, index=False)
     complexity.to_csv(complexity_path, index=False)
     unit_complexity.to_csv(unit_complexity_path, index=False)
+    sampling = sampling_summary(df, condition_col=condition_col, unit_cols=selected_units, time_col=time_col)
+    if not sampling.empty:
+        sampling.to_csv(sampling_path, index=False)
     significance.to_csv(significance_path, index=False)
     cross_signal.to_csv(cross_signal_path, index=False)
 
@@ -760,6 +887,7 @@ def analyze_dataset(
     )
     report_lines.append(f"- Rows analyzed: {provenance['output_rows']}")
     report_lines.append("")
+    report_lines.extend(_sampling_lines(sampling, time_col))
     report_lines.append("## Condition summary")
     report_lines.extend(_as_code_block(summary.to_string(index=False)))
     report_lines.append("## Complexity metrics")
@@ -804,6 +932,8 @@ def analyze_dataset(
         "summary_csv": str(summary_path),
         "complexity_csv": str(complexity_path),
         "complexity_by_unit_csv": str(unit_complexity_path),
+        "sampling_by_unit": sampling,
+        "sampling_csv": str(sampling_path) if not sampling.empty else None,
         "significance_csv": str(significance_path),
         "cross_signal_csv": str(cross_signal_path),
         "plot_paths": plot_paths,
