@@ -20,6 +20,7 @@ from .domain_profiles import (
 from .metrics import (
     _METRIC_FUNCTIONS,
     DEFAULT_METRICS,
+    Segments,
     compare_conditions,
     compute_complexity_metrics,
     descriptive_stats,
@@ -295,6 +296,29 @@ def _format_spacing(value: float, is_datetime: bool) -> str:
     return f"{value:g}s"
 
 
+def _numeric_times(values: pd.Series) -> pd.Series | None:
+    """Time values as floats (seconds from the earliest, for dates), or None if unreadable."""
+    times = _time_sort_key(values)
+    if pd.api.types.is_datetime64_any_dtype(times):
+        return (times - times.min()).dt.total_seconds()
+    if pd.api.types.is_numeric_dtype(times):
+        return times.astype(float)
+    return None
+
+
+def _gap_starts(ordered_times: np.ndarray, max_joined_gap: int = 0) -> np.ndarray:
+    """Indices (into the sorted times) where a new segment starts: after any gap, by the same
+    rule sampling_summary reports (a spacing over GAP_FACTOR median spacings), unless the gap
+    is missing at most max_joined_gap samples, in which case it is joined over."""
+    spacings = np.diff(ordered_times)
+    positive = spacings[spacings > 0]
+    if positive.size == 0:
+        return np.array([], dtype=int)
+    interval = float(np.median(positive))
+    threshold = max(GAP_FACTOR, max_joined_gap + GAP_FACTOR) * interval
+    return np.flatnonzero(spacings > threshold) + 1
+
+
 def sampling_summary(
     df: pd.DataFrame,
     condition_col: str = "condition",
@@ -318,11 +342,10 @@ def sampling_summary(
     ]
     if time_col is None:
         return pd.DataFrame(columns=columns)
-    times = _time_sort_key(df[time_col])
-    is_datetime = pd.api.types.is_datetime64_any_dtype(times)
-    if not (is_datetime or pd.api.types.is_numeric_dtype(times)):
+    numeric_times = _numeric_times(df[time_col])
+    if numeric_times is None:
         return pd.DataFrame(columns=columns)
-    numeric_times = (times - times.min()).dt.total_seconds() if is_datetime else times.astype(float)
+    is_datetime = pd.api.types.is_datetime64_any_dtype(_time_sort_key(df[time_col]))
 
     records = []
     grouped = numeric_times.groupby([df[condition_col], *(df[col] for col in unit_cols)], dropna=False, sort=True)
@@ -357,7 +380,14 @@ def sampling_summary(
     return pd.DataFrame.from_records(records, columns=columns)
 
 
-def _sampling_lines(sampling: pd.DataFrame, time_col: str | None) -> list[str]:
+def _sampling_lines(
+    sampling: pd.DataFrame,
+    time_col: str | None,
+    gap_policy: str = "join",
+    excluded: pd.DataFrame | None = None,
+    min_coverage: float = 0.8,
+    max_joined_gap: int = 0,
+) -> list[str]:
     lines = ["## Sampling"]
     if time_col is None:
         names = ", ".join(_TIME_COLUMN_CANDIDATES)
@@ -377,10 +407,28 @@ def _sampling_lines(sampling: pd.DataFrame, time_col: str | None) -> list[str]:
     n_units = len(sampling)
     gappy = sampling[sampling["n_gaps"] > 0]
     if not gappy.empty:
-        lines.append(
-            f"- {int(gappy['n_gaps'].sum())} gap(s) in {len(gappy)} of {n_units} unit(s). Metrics treat each "
-            "unit's samples as consecutive, so values on either side of a gap are joined."
+        handling = {
+            "join": "Metrics treat each unit's samples as consecutive, so values on either side of a gap are joined "
+            "(gap_policy: join).",
+            "segment": "Metrics are computed within each unit's gap-free segments: no DFA window or entropy "
+            "template spans a gap (gap_policy: segment)."
+            + (
+                f" Gaps of up to {max_joined_gap} missing sample(s) are joined over rather than split "
+                f"(max_joined_gap: {max_joined_gap})."
+                if max_joined_gap
+                else ""
+            ),
+            "exclude": f"Units with coverage below {min_coverage:.0%} are excluded; the remaining units are joined "
+            "across their gaps (gap_policy: exclude).",
+        }[gap_policy]
+        lines.append(f"- {int(gappy['n_gaps'].sum())} gap(s) in {len(gappy)} of {n_units} unit(s). {handling}")
+    if excluded is not None and not excluded.empty:
+        unit_cols = [col for col in excluded.columns if col not in ("condition", "coverage")]
+        names = ", ".join(
+            f"{'/'.join(str(row[col]) for col in unit_cols) or row['condition']} ({row['coverage']:.0%})"
+            for _, row in excluded.iterrows()
         )
+        lines.append(f"- Excluded for coverage below {min_coverage:.0%}: {names}.")
     irregular = sampling[sampling["irregular"]]
     if not irregular.empty:
         lines.append(
@@ -405,13 +453,29 @@ def _iter_unit_series(
     condition_col: str,
     unit_cols: Sequence[str],
     time_col: str | None,
+    gap_policy: str = "join",
+    max_joined_gap: int = 0,
 ):
-    """Yield (condition, unit_keys, values) for each recording unit, sorted by time_col when given."""
+    """Yield (condition, unit_keys, values) for each recording unit, sorted by time_col when given.
+
+    With gap_policy "segment", values are Segments split at the unit's time gaps, so
+    gap-aware metrics never form a window or template across one. Gaps missing at most
+    max_joined_gap samples are joined over instead of split.
+    """
     for keys, group in df.groupby([condition_col, *unit_cols], dropna=False, sort=True):
         keys = keys if isinstance(keys, tuple) else (keys,)
         if time_col is not None:
             group = group.sort_values(time_col, key=_time_sort_key, kind="stable")
-        yield keys[0], keys[1:], group[signal_col].to_numpy(dtype=float)
+        values = group[signal_col].to_numpy(dtype=float)
+        if gap_policy == "segment" and time_col is not None:
+            times = _numeric_times(group[time_col])
+            starts = (
+                _gap_starts(times.to_numpy(dtype=float), max_joined_gap)
+                if times is not None
+                else np.array([], dtype=int)
+            )
+            values = Segments(np.split(values, starts))
+        yield keys[0], keys[1:], values
 
 
 def unit_complexity_summary(
@@ -422,22 +486,28 @@ def unit_complexity_summary(
     unit_cols: Sequence[str] = (),
     time_col: str | None = None,
     metric_parameters: Mapping[str, Mapping[str, Any]] | None = None,
+    gap_policy: str = "join",
+    max_joined_gap: int = 0,
 ) -> pd.DataFrame:
     """Compute complexity metrics separately within each recording unit of each condition.
 
     Sample entropy, spectral entropy, and DFA depend on sample order, so joining several
     independent recordings (subjects, trials, sessions) end to end would insert an
     artificial jump at every join that the metrics read as real dynamics. Rows within a
-    unit are sorted by time_col when given; otherwise file order is kept.
+    unit are sorted by time_col when given; otherwise file order is kept. With gap_policy
+    "segment", metrics are computed within each unit's gap-free segments (n_segments).
     """
     records = []
-    for condition, unit_keys, values in _iter_unit_series(df, signal_col, condition_col, unit_cols, time_col):
+    unit_series = _iter_unit_series(df, signal_col, condition_col, unit_cols, time_col, gap_policy, max_joined_gap)
+    for condition, unit_keys, values in unit_series:
+        segmented = isinstance(values, Segments)
         records.append(
             {
                 "condition": condition,
                 **dict(zip(unit_cols, unit_keys)),
                 "signal": signal_col,
-                "n_samples": int(values.size),
+                "n_samples": int(sum(len(v) for v in values)) if segmented else int(values.size),
+                **({"n_segments": len(values)} if segmented else {}),
                 **compute_complexity_metrics(values, metrics=metrics, parameters=metric_parameters),
             }
         )
@@ -776,6 +846,21 @@ def analyze_dataset(
     df, provenance = clean_dataset(df, required_cols=[*selected_signals, condition_col])
     selected_units = resolve_unit_columns(df, unit_cols, condition_col=condition_col)
     time_col = resolve_time_column(df)
+    sampling = sampling_summary(df, condition_col=condition_col, unit_cols=selected_units, time_col=time_col)
+    gap_policy = domain_profile.gap_policy
+    if gap_policy != "join" and sampling.empty:
+        raise ValueError(
+            f"Domain profile '{domain_profile.name}' sets gap_policy: {gap_policy}, which needs a readable time "
+            f"column ({', '.join(_TIME_COLUMN_CANDIDATES)}) to find gaps; none was found."
+        )
+    excluded = pd.DataFrame()
+    if gap_policy == "exclude":
+        keys = [condition_col, *selected_units]
+        low = sampling["coverage"] < domain_profile.min_coverage
+        excluded = sampling.loc[low, ["condition", *selected_units, "coverage"]]
+        dropped = pd.MultiIndex.from_frame(excluded[["condition", *selected_units]].set_axis(keys, axis=1))
+        df = df[~pd.MultiIndex.from_frame(df[keys]).isin(dropped)]
+        provenance["units_excluded_low_coverage"] = len(excluded)
 
     summary_frames = []
     complexity_frames = []
@@ -794,6 +879,8 @@ def analyze_dataset(
             unit_cols=selected_units,
             time_col=time_col,
             metric_parameters=domain_profile.metric_parameters,
+            gap_policy=gap_policy,
+            max_joined_gap=domain_profile.max_joined_gap,
         )
         unit_complexity_frames.append(unit_complexity)
         complexity_frames.append(
@@ -831,7 +918,6 @@ def analyze_dataset(
     summary.to_csv(summary_path, index=False)
     complexity.to_csv(complexity_path, index=False)
     unit_complexity.to_csv(unit_complexity_path, index=False)
-    sampling = sampling_summary(df, condition_col=condition_col, unit_cols=selected_units, time_col=time_col)
     if not sampling.empty:
         sampling.to_csv(sampling_path, index=False)
     significance.to_csv(significance_path, index=False)
@@ -865,6 +951,7 @@ def analyze_dataset(
         f"- Condition column: {condition_col}",
         f"- Recording unit columns: {', '.join(selected_units) if selected_units else 'none'}",
         *_metric_settings_lines(domain_profile),
+        *([f"- Gap policy: {gap_policy}"] if gap_policy != "join" else []),
         "",
     ]
     if domain_profile.signal_roles:
@@ -887,7 +974,16 @@ def analyze_dataset(
     )
     report_lines.append(f"- Rows analyzed: {provenance['output_rows']}")
     report_lines.append("")
-    report_lines.extend(_sampling_lines(sampling, time_col))
+    report_lines.extend(
+        _sampling_lines(
+            sampling,
+            time_col,
+            gap_policy,
+            excluded=excluded,
+            min_coverage=domain_profile.min_coverage,
+            max_joined_gap=domain_profile.max_joined_gap,
+        )
+    )
     report_lines.append("## Condition summary")
     report_lines.extend(_as_code_block(summary.to_string(index=False)))
     report_lines.append("## Complexity metrics")

@@ -121,6 +121,9 @@ climate_temperature:
       min_scale: 30
       max_scale: 3000
       order: 2
+  # Records have gaps from a day to over a decade. They're joined (the default gap_policy):
+  # temperature anomalies are positively correlated, and joining vs. segment-aware DFA
+  # agreed within ~0.01 per station (docs/validation/gap_handling.md).
   expected_columns:
     - tmax_anomaly
     - condition

@@ -37,8 +37,12 @@ built on that foundation.
    would read as real dynamics. Per-recording values are written to `complexity_by_unit.csv`.
    With a time column, each recording's sampling is also checked and reported
    (`sampling_by_unit.csv`): the interval, coverage, gaps (spacings over 1.5 intervals), and
-   whether the spacing is irregular. The metrics still treat a recording's samples as
-   consecutive, so the report says how many gaps they were joined across.
+   whether the spacing is irregular. A profile's `gap_policy` sets how metrics treat gaps:
+   `join` (default) treats samples as consecutive and reports how many gaps were joined;
+   `segment` computes within gap-free segments so no DFA window or entropy template spans a
+   gap (`max_joined_gap: N` joins gaps of at most N missing samples); `exclude` drops
+   recordings below `min_coverage`. Joining is sound for positively correlated signals but can
+   bias anticorrelated ones (see [docs/validation/gap_handling.md](docs/validation/gap_handling.md)).
 5. **Test statistical significance** between every pair of conditions (Welch's t-test +
    Cohen's d effect size), so directional differences can be read alongside whether they're
    distinguishable from sampling noise. Time-series samples are autocorrelated and nested
@@ -158,6 +162,7 @@ complexity-engine/
 ├── docs/
 │   └── validation/
 │       ├── fantasia.md              # known-answer validation on real heart-rate data
+│       ├── gap_handling.md          # gap_policy validated on synthetic data loss and GHCN
 │       ├── ghcn_temperature.md      # known-answer validation on real climate data
 │       └── social_networks.md       # known-answer validation on real social networks
 ├── tests/                           # pytest suite

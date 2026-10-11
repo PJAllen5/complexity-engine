@@ -85,3 +85,57 @@ def test_island_stations_are_more_persistent_and_more_varied(dfa_by_station, dfa
 )
 def test_island_difference_is_significant(dfa_test):
     assert dfa_test["p_value"] < 0.05
+
+
+# --- All 23 stations with gap_policy: segment (#59, PR 2) ---------------------------------
+# Fixed before the run: the 5 stations excluded above for coverage are added back and gaps
+# handled in the engine (segment, splitting at every gap) instead. Predictions: islands
+# higher at p < 0.05; continental mean 0.65 +/- 0.05 with SD < 0.05; and Chita, the most
+# continental station, at alpha >= 0.6 (Eichner et al., 2003) rather than <= 0.55
+# (Fraedrich & Blender, 2003). Splitting at every missing day left 7 of 23 stations without
+# enough long windows; see docs/validation/gap_handling.md.
+
+GHCN_ALL_CSV = GHCN_CSV.with_name("ghcn_tmax_anomaly_all.csv")
+CHITA = "RSM00030758"
+
+
+@pytest.fixture(scope="module")
+def all_stations(tmp_path_factory):
+    if not GHCN_ALL_CSV.exists():
+        pytest.skip("Run python data/fetch_ghcn_temperature.py --all-stations")
+    import yaml
+
+    from complexity_engine.domain_profiles import get_domain_profile
+
+    profile = {**get_domain_profile("climate_temperature").as_dict(), "name": "climate_segment", "gap_policy": "segment"}
+    config = tmp_path_factory.mktemp("config") / "segment.yaml"
+    config.write_text(yaml.safe_dump({"climate_segment": profile}), encoding="utf-8")
+    return analyze_dataset(
+        GHCN_ALL_CSV,
+        signal_cols=["tmax_anomaly"],
+        unit_cols=["station_id"],
+        domain="climate_segment",
+        domain_config=config,
+        output_dir=tmp_path_factory.mktemp("ghcn_all"),
+    )
+
+
+def test_all_stations_continental_exponent_near_065(all_stations):
+    units = all_stations["complexity_by_unit"]
+    continental = units.loc[units["condition"] == "continental", "dfa_exponent"].dropna()
+    assert continental.mean() == pytest.approx(0.65, abs=0.05)
+    assert continental.std() < 0.05
+
+
+def test_most_continental_station_is_persistent_not_white_noise(all_stations):
+    chita = all_stations["complexity_by_unit"].set_index("station_id").loc[CHITA, "dfa_exponent"]
+    assert chita >= 0.6
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Islands 0.719 vs continental 0.679 (d = 1.2) but p = 0.11, with only 12 vs 4 stations defined.",
+)
+def test_all_stations_island_difference_is_significant(all_stations):
+    row = all_stations["significance_summary"].set_index("measure").loc["dfa_exponent"]
+    assert row["mean_b"] > row["mean_a"] and row["p_value"] < 0.05
