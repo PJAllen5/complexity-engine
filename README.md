@@ -60,12 +60,23 @@ built on that foundation.
    base64-inlined into the single file) to an output directory.
 
 Domain profiles for this pipeline (`physiology`, `cognitive`, `stress`, `attention`,
-`heart_rate_variability`, and any
+`heart_rate_variability`, `climate_temperature`, and any
 custom ones you add) live in `config/domain_profiles.yaml` (or `.json`) and can be extended or
 overridden without touching Python code. A profile's `recommended_metrics` is validated
 against the pipeline's known metrics as soon as the domain is looked up — before any data is
 loaded — so a typo or a metric name that belongs to the other pipeline fails immediately with
 a clear message, not deep inside a later analysis step.
+
+A profile can also set `metric_parameters` to override a metric's settings for its domain,
+for example a DFA window range and detrending order:
+
+```yaml
+metric_parameters:
+  dfa_exponent: {min_scale: 30, max_scale: 3000, order: 2}  # scales are in samples
+```
+
+Unknown metrics or parameter names are rejected at load time, and the settings used are
+printed in the report.
 
 ## Network pipeline: what it does today
 
@@ -133,10 +144,13 @@ complexity-engine/
 │   ├── physio_example.csv           # synthetic sample dataset for the time-series pipeline
 │   ├── make_physio_example.py       # seeded generator for physio_example.csv
 │   ├── fetch_fantasia.py            # downloads real heart-rate data for validation (not committed)
+│   ├── fetch_ghcn_temperature.py    # downloads real daily temperature data for validation (not committed)
 │   └── network_example.csv          # sample edge list for the network pipeline
 ├── outputs/                         # generated CSV summaries, plots/, and report.md
 ├── docs/
-│   └── validation/fantasia.md       # known-answer validation on real heart-rate data
+│   └── validation/
+│       ├── fantasia.md              # known-answer validation on real heart-rate data
+│       └── ghcn_temperature.md      # known-answer validation on real climate data
 ├── tests/                           # pytest suite
 └── papers/
     └── references.bib               # curated complexity science / information theory / cognitive science bibliography
@@ -200,6 +214,19 @@ The pipeline reproduces lower sample entropy and a higher short-range DFA expone
 elderly. It does not reproduce the published drop in the long-range DFA exponent, which
 turned out to depend on the window it's fitted over. See
 [docs/validation/fantasia.md](docs/validation/fantasia.md) for the full results.
+
+`tests/test_ghcn_validation.py` does the same outside biology, on daily maximum temperatures
+from 18 GHCN-Daily stations, with the `climate_temperature` profile:
+
+```bash
+python data/fetch_ghcn_temperature.py   # ~17 MB of station records -> data/external/ghcn_tmax_anomaly.csv
+python -m pytest -q tests/test_ghcn_validation.py
+```
+
+The pipeline reproduces long-range persistence near the published α ≈ 0.65 at every
+continental station, with a narrow spread, and higher, more varied exponents on islands.
+With only 5 island stations, the island difference is not significant (p = 0.075). See
+[docs/validation/ghcn_temperature.md](docs/validation/ghcn_temperature.md).
 
 ## Literature base
 

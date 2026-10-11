@@ -1,8 +1,10 @@
+import numpy as np
 import pandas as pd
 import pytest
 
 from complexity_engine.analysis import analyze_dataset
-from complexity_engine.domain_profiles import DomainProfile, validate_recommended_metrics
+from complexity_engine.domain_profiles import DomainProfile, validate_metric_parameters, validate_recommended_metrics
+from complexity_engine.metrics import dfa_exponent
 
 
 def test_domain_profile_is_applied(tmp_path):
@@ -141,3 +143,70 @@ bad_domain:
     # Fails before any output is written -- this is a load-time check, not a
     # mid-analysis crash.
     assert not (tmp_path / "outputs").exists()
+
+
+_ACCEPTED = {"dfa_exponent": ("min_scale", "max_scale", "order"), "sample_entropy": ("m", "r")}
+
+
+def _profile_with_parameters(metric_parameters):
+    return DomainProfile.from_mapping(
+        {"name": "test", "recommended_metrics": ["dfa_exponent"], "metric_parameters": metric_parameters}
+    )
+
+
+def test_validate_metric_parameters_accepts_known_parameters():
+    profile = _profile_with_parameters({"dfa_exponent": {"min_scale": 30, "order": 2}})
+    validate_metric_parameters(profile, _ACCEPTED)  # should not raise
+    assert profile.as_dict()["metric_parameters"] == {"dfa_exponent": {"min_scale": 30, "order": 2}}
+
+
+@pytest.mark.parametrize(
+    "metric_parameters, message",
+    [
+        ({"dfa_exponnt": {"order": 2}}, "unknown metric 'dfa_exponnt'"),
+        ({"sample_entropy": {"m": 3}}, "isn't in its recommended_metrics"),
+        ({"dfa_exponent": {"max_scal": 3000}}, r"unknown parameter\(s\) \['max_scal'\]"),
+    ],
+)
+def test_validate_metric_parameters_rejects_mistakes(metric_parameters, message):
+    with pytest.raises(ValueError, match=message):
+        validate_metric_parameters(_profile_with_parameters(metric_parameters), _ACCEPTED)
+
+
+def test_metric_parameters_must_be_nested_mappings():
+    with pytest.raises(ValueError, match="metric_parameters must map"):
+        _profile_with_parameters({"dfa_exponent": 30})
+
+
+def test_analyze_dataset_applies_and_reports_metric_parameters(tmp_path):
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(
+        {
+            "condition": np.repeat(["a", "b"], 2000),
+            "signal": rng.standard_normal(4000),
+        }
+    )
+    csv_path = tmp_path / "data.csv"
+    df.to_csv(csv_path, index=False)
+    config_path = tmp_path / "domain.yaml"
+    config_path.write_text(
+        """
+scaled:
+  name: scaled
+  description: Test domain with a configured DFA range.
+  recommended_metrics: [dfa_exponent]
+  metric_parameters:
+    dfa_exponent: {min_scale: 10, max_scale: 100, order: 2}
+""",
+        encoding="utf-8",
+    )
+
+    result = analyze_dataset(
+        csv_path, signal_cols=["signal"], domain="scaled", domain_config=config_path, output_dir=tmp_path / "out"
+    )
+
+    expected = dfa_exponent(df.loc[df["condition"] == "a", "signal"].to_numpy(), min_scale=10, max_scale=100, order=2)
+    complexity = result["complexity_summary"].set_index("condition")
+    assert complexity.loc["a", "dfa_exponent"] == pytest.approx(expected)
+    report = (tmp_path / "out" / "report.md").read_text(encoding="utf-8")
+    assert "- Metric settings: dfa_exponent(min_scale=10, max_scale=100, order=2)" in report

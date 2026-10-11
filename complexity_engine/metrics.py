@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import inspect
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import numpy as np
 from scipy import stats
@@ -92,29 +94,29 @@ def spectral_entropy(signal: np.ndarray) -> float:
     return float(entropy / max_entropy)
 
 
-def _detrended_fluctuation(profile: np.ndarray, scale: int) -> float:
+def _detrended_fluctuation(profile: np.ndarray, scale: int, order: int = 1) -> float:
     """DFA fluctuation F(n): RMS residual, over every sample, after removing a least-squares
-    line from each non-overlapping window of `scale` samples (a trailing partial window is
-    dropped).
+    polynomial of degree `order` from each non-overlapping window of `scale` samples (a
+    trailing partial window is dropped). order=1 is standard DFA (DFA1); order=n is DFAn,
+    which removes polynomial trends of degree n-1 from the original signal.
 
     This is Peng et al.'s (1995) definition: one RMS over all residuals, not the mean of
     each window's RMS. The two differ most at small windows, where per-window RMS is noisy
     and averaging it biases the exponent upward (white noise over 4-16 samples gave ~0.64
     instead of the ~0.59 that nolds and this definition give).
 
-    Fits every window at once in closed form rather than calling np.polyfit per window.
+    Fits every window at once by projecting onto an orthonormal polynomial basis rather
+    than calling np.polyfit per window.
     """
     n_windows = len(profile) // scale
     windows = profile[: n_windows * scale].reshape(n_windows, scale)
-    x = np.arange(scale, dtype=float)
-    x_centered = x - x.mean()
-    windows_centered = windows - windows.mean(axis=1, keepdims=True)
-    slopes = windows_centered @ x_centered / (x_centered @ x_centered)
-    residuals = windows_centered - np.outer(slopes, x_centered)
+    x = np.linspace(-1.0, 1.0, scale)
+    basis, _ = np.linalg.qr(np.vander(x, order + 1))
+    residuals = windows - (windows @ basis) @ basis.T
     return float(np.sqrt(np.mean(residuals**2)))
 
 
-def dfa_exponent(signal: np.ndarray, min_scale: int = 8, max_scale: int | None = None) -> float:
+def dfa_exponent(signal: np.ndarray, min_scale: int = 8, max_scale: int | None = None, order: int = 1) -> float:
     """Approximate the detrended fluctuation analysis exponent.
 
     Fits the log-log slope of fluctuation against window size over 8 log-spaced window
@@ -122,10 +124,14 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8, max_scale: int | None =
     quarter of the series length. With max_scale, the series must be at least
     4 * max_scale samples long (so the largest window still averages over four windows);
     otherwise the result is NaN rather than a slope over a silently truncated range.
+    `order` is the detrending polynomial's degree (1 = DFA1, 2 = DFA2, ...); windows need
+    more than order + 1 samples to leave any residual, so smaller ones are skipped.
 
     Returns NaN for fewer than 16 samples or when fluctuation is zero at some scale
     (e.g. a constant or perfectly linear signal), where the log-log slope is undefined.
     """
+    if int(order) != order or order < 1:
+        raise ValueError(f"DFA order must be a positive integer, got {order!r}.")
     data = np.asarray(signal, dtype=float)
     if data.size < 16:
         return np.nan
@@ -137,12 +143,12 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8, max_scale: int | None =
     n = len(profile)
     upper = max_scale if max_scale is not None else max(8, n // 4)
     scales = np.unique(np.array([int(s) for s in np.geomspace(min_scale, upper, num=8)], dtype=int))
-    scales = scales[scales >= 2]
+    scales = scales[scales >= order + 2]
     scales = scales[scales < n]
     if scales.size < 2:
         return np.nan
 
-    rms = [_detrended_fluctuation(profile, int(scale)) for scale in scales]
+    rms = [_detrended_fluctuation(profile, int(scale), int(order)) for scale in scales]
 
     if len(rms) < 2 or np.any(np.asarray(rms) <= 0):
         return np.nan
@@ -244,15 +250,19 @@ def mutual_information(x: np.ndarray, y: np.ndarray, bins: int = 8) -> float:
     return float(np.sum(joint_prob[mask] * np.log2(joint_prob[mask] / outer[mask])))
 
 
+# Each metric is a function and the keyword arguments it's called with. A domain profile's
+# metric_parameters override those arguments (e.g. a DFA scale range suited to its sampling
+# interval) without the profile's domain knowledge having to live in Python.
 _METRIC_FUNCTIONS = {
-    "sample_entropy": lambda signal: sample_entropy(signal, m=2, r=0.2),
-    "spectral_entropy": spectral_entropy,
-    "dfa_exponent": dfa_exponent,
+    "sample_entropy": (sample_entropy, {"m": 2, "r": 0.2}),
+    "spectral_entropy": (spectral_entropy, {}),
+    "dfa_exponent": (dfa_exponent, {}),
     # Separate short- and long-range exponents, for signals whose correlation structure
     # changes with scale. The ranges are the heart-rate convention (Peng et al., 1995),
-    # in samples (beats for RR intervals); other domains may need different ranges.
-    "dfa_short_term": lambda signal: dfa_exponent(signal, min_scale=4, max_scale=16),
-    "dfa_long_term": lambda signal: dfa_exponent(signal, min_scale=16, max_scale=64),
+    # in samples (beats for RR intervals); other domains can override them via
+    # metric_parameters, or set a range on dfa_exponent itself.
+    "dfa_short_term": (dfa_exponent, {"min_scale": 4, "max_scale": 16}),
+    "dfa_long_term": (dfa_exponent, {"min_scale": 16, "max_scale": 64}),
 }
 
 
@@ -261,16 +271,38 @@ _METRIC_FUNCTIONS = {
 DEFAULT_METRICS = ("sample_entropy", "spectral_entropy", "dfa_exponent")
 
 
-def compute_complexity_metrics(signal: np.ndarray, metrics: Sequence[str] | None = None) -> dict[str, float]:
+def metric_parameter_names(metric: str) -> tuple[str, ...]:
+    """Keyword arguments a metric accepts (everything after the signal itself)."""
+    function, _ = _METRIC_FUNCTIONS[metric]
+    return tuple(inspect.signature(function).parameters)[1:]
+
+
+def metric_settings(metric: str, parameters: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The keyword arguments a metric is actually called with: its defaults, then overrides."""
+    _, defaults = _METRIC_FUNCTIONS[metric]
+    return {**defaults, **(parameters or {})}
+
+
+def compute_complexity_metrics(
+    signal: np.ndarray,
+    metrics: Sequence[str] | None = None,
+    parameters: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, float]:
     """Compute complexity metrics for a signal.
 
     If `metrics` is omitted, DEFAULT_METRICS are computed. Pass an explicit
     subset (e.g. a domain profile's `recommended_metrics`) to compute only those.
+    `parameters` maps a metric name to keyword arguments that override its defaults
+    (e.g. a domain profile's `metric_parameters`).
     """
+    parameters = parameters or {}
     signal = np.asarray(signal, dtype=float)
     selected = tuple(metrics) if metrics else DEFAULT_METRICS
     unknown = [name for name in selected if name not in _METRIC_FUNCTIONS]
     if unknown:
         supported = ", ".join(sorted(_METRIC_FUNCTIONS))
         raise ValueError(f"Unknown complexity metric(s): {', '.join(unknown)}. Supported metrics: {supported}.")
-    return {name: float(_METRIC_FUNCTIONS[name](signal)) for name in selected}
+    return {
+        name: float(_METRIC_FUNCTIONS[name][0](signal, **metric_settings(name, parameters.get(name))))
+        for name in selected
+    }
