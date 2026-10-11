@@ -84,6 +84,10 @@ behaviour, now reported):
 - `exclude` — drop units below `min_coverage`. This is what the GHCN fetch script did, moved
   into the engine and reported.
 
+*Amended in PR 2:* splitting at every gap left 7 of 23 GHCN stations without enough long DFA
+windows, since a single missing day splits a record. `max_joined_gap: N` now joins gaps of at
+most N missing samples under `segment`. See [gap_handling.md](../validation/gap_handling.md).
+
 **4. Time-unit scales.** With `axis: time`, `metric_parameters` scales may be durations:
 `dfa_exponent: {min_scale: 30D, max_scale: 3000D, order: 2}`. They're converted to samples
 using the nominal interval, and the report prints both (`30D = 30 samples at 1D`). A bare

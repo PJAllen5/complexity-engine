@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any
 
 
+# How time-series metrics treat gaps in a recording (see docs/design/time-axis-and-node-attributes.md):
+# join them (consecutive samples), compute within gap-free segments, or exclude low-coverage units.
+GAP_POLICIES = ("join", "segment", "exclude")
+
+
 @dataclass
 class DomainProfile:
     name: str
@@ -19,6 +24,9 @@ class DomainProfile:
     expected_columns: tuple[str, ...] = field(default_factory=tuple)
     analysis_question: str = ""
     metric_parameters: dict[str, dict[str, Any]] = field(default_factory=dict)
+    gap_policy: str = "join"
+    min_coverage: float = 0.8
+    max_joined_gap: int = 0
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any], key: str | None = None) -> "DomainProfile":
@@ -34,6 +42,21 @@ class DomainProfile:
                 f"Domain profile '{normalized_name}': metric_parameters must map each metric name to a "
                 "mapping of parameter names to values, e.g. {dfa_exponent: {min_scale: 30}}."
             )
+        gap_policy = str(data.get("gap_policy", "join")).strip().lower()
+        if gap_policy not in GAP_POLICIES:
+            raise ValueError(
+                f"Domain profile '{normalized_name}': gap_policy must be one of {', '.join(GAP_POLICIES)}, "
+                f"got '{gap_policy}'."
+            )
+        min_coverage = float(data.get("min_coverage", 0.8))
+        if not 0.0 < min_coverage <= 1.0:
+            raise ValueError(f"Domain profile '{normalized_name}': min_coverage must be in (0, 1], got {min_coverage}.")
+        max_joined_gap = data.get("max_joined_gap", 0)
+        if not isinstance(max_joined_gap, int) or isinstance(max_joined_gap, bool) or max_joined_gap < 0:
+            raise ValueError(
+                f"Domain profile '{normalized_name}': max_joined_gap must be a non-negative whole number of "
+                f"missing samples, got {max_joined_gap!r}."
+            )
         return cls(
             name=normalized_name,
             description=str(data.get("description", "")),
@@ -43,6 +66,9 @@ class DomainProfile:
             expected_columns=tuple(str(col) for col in expected_columns),
             analysis_question=str(analysis_question),
             metric_parameters={str(k): {str(p): v for p, v in v.items()} for k, v in metric_parameters.items()},
+            gap_policy=gap_policy,
+            min_coverage=min_coverage,
+            max_joined_gap=max_joined_gap,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -55,6 +81,9 @@ class DomainProfile:
             "signal_roles": dict(self.signal_roles),
             "interpretation_rules": dict(self.interpretation_rules),
             "metric_parameters": {k: dict(v) for k, v in self.metric_parameters.items()},
+            "gap_policy": self.gap_policy,
+            "min_coverage": self.min_coverage,
+            "max_joined_gap": self.max_joined_gap,
         }
 
 

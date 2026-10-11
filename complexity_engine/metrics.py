@@ -25,6 +25,21 @@ def descriptive_stats(signal: np.ndarray) -> dict[str, float]:
     }
 
 
+class Segments(tuple):
+    """A recording split at gaps into contiguous segments, for gap-aware metrics.
+
+    Passing Segments([a, b, ...]) instead of one array tells a metric that the pieces
+    were recorded with gaps between them: windows and templates are formed only within
+    a segment, never across a join. Segments([x]) gives exactly the same result as x.
+    """
+
+
+def _as_segments(signal) -> list[np.ndarray]:
+    if isinstance(signal, Segments):
+        return [np.asarray(segment, dtype=float) for segment in signal]
+    return [np.asarray(signal, dtype=float)]
+
+
 def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
     """Compute sample entropy for a one-dimensional time series.
 
@@ -32,9 +47,13 @@ def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
     templates, or no template pairs match at length m or m + 1 (-log(0) and 0/0). A
     constant signal returns 0.0, since every template matches -- it is genuinely
     perfectly regular, not a failed computation.
+
+    Given Segments, templates are formed within each segment (none spans a gap) and
+    compared across all of them, with r scaled by the SD of all values together.
     """
-    data = np.asarray(signal, dtype=float)
-    if data.size < 2 * m + 1:
+    segments = _as_segments(signal)
+    data = np.concatenate(segments)
+    if max(segment.size for segment in segments) < 2 * m + 1:
         return np.nan
 
     data_std = np.std(data)
@@ -47,7 +66,9 @@ def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
         # A KD-tree counts them without comparing every pair, so run time no longer grows
         # with the square of the series length; the count is identical to a brute-force
         # pairwise comparison (see tests/test_metrics.py).
-        templates = np.lib.stride_tricks.sliding_window_view(data, level)
+        templates = np.concatenate(
+            [np.lib.stride_tricks.sliding_window_view(seg, level) for seg in segments if seg.size >= level]
+        )
         tree = cKDTree(templates)
         # count_neighbors counts ordered pairs, including each template with itself.
         ordered_pairs = int(tree.count_neighbors(tree, tol, p=np.inf))
@@ -60,6 +81,11 @@ def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
         return np.nan
 
     return float(-np.log(a_m / b_m))
+
+
+# Segments shorter than this don't contribute to gap-aware spectral entropy: their few
+# frequency bins give a noisy, coarse estimate.
+_MIN_SPECTRAL_SEGMENT = 16
 
 
 def spectral_entropy(signal: np.ndarray) -> float:
@@ -75,7 +101,22 @@ def spectral_entropy(signal: np.ndarray) -> float:
 
     Returns NaN for fewer than 2 samples or a constant signal (no spectral power to
     distribute), rather than 0.0, which would read as "one dominant frequency."
+
+    Given Segments, the result is the length-weighted mean over segments of at least
+    _MIN_SPECTRAL_SEGMENT samples (a single segment is used whatever its length).
     """
+    if isinstance(signal, Segments):
+        segments = _as_segments(signal)
+        if len(segments) == 1:
+            return spectral_entropy(segments[0])
+        usable = [seg for seg in segments if seg.size >= _MIN_SPECTRAL_SEGMENT]
+        values = np.array([spectral_entropy(seg) for seg in usable])
+        weights = np.array([seg.size for seg in usable], dtype=float)
+        finite = np.isfinite(values)
+        if not finite.any():
+            return np.nan
+        return float(np.average(values[finite], weights=weights[finite]))
+
     data = np.asarray(signal, dtype=float)
     if data.size < 2:
         return np.nan
@@ -94,26 +135,40 @@ def spectral_entropy(signal: np.ndarray) -> float:
     return float(entropy / max_entropy)
 
 
-def _detrended_fluctuation(profile: np.ndarray, scale: int, order: int = 1) -> float:
-    """DFA fluctuation F(n): RMS residual, over every sample, after removing a least-squares
-    polynomial of degree `order` from each non-overlapping window of `scale` samples (a
+def _window_residuals(profile: np.ndarray, scale: int, order: int = 1) -> tuple[float, int]:
+    """Sum of squared residuals, and their count, after removing a least-squares polynomial
+    of degree `order` from each non-overlapping window of `scale` samples of `profile` (a
     trailing partial window is dropped). order=1 is standard DFA (DFA1); order=n is DFAn,
     which removes polynomial trends of degree n-1 from the original signal.
-
-    This is Peng et al.'s (1995) definition: one RMS over all residuals, not the mean of
-    each window's RMS. The two differ most at small windows, where per-window RMS is noisy
-    and averaging it biases the exponent upward (white noise over 4-16 samples gave ~0.64
-    instead of the ~0.59 that nolds and this definition give).
 
     Fits every window at once by projecting onto an orthonormal polynomial basis rather
     than calling np.polyfit per window.
     """
     n_windows = len(profile) // scale
+    if n_windows == 0:
+        return 0.0, 0
     windows = profile[: n_windows * scale].reshape(n_windows, scale)
     x = np.linspace(-1.0, 1.0, scale)
     basis, _ = np.linalg.qr(np.vander(x, order + 1))
     residuals = windows - (windows @ basis) @ basis.T
-    return float(np.sqrt(np.mean(residuals**2)))
+    return float(np.sum(residuals**2)), residuals.size
+
+
+def _detrended_fluctuation(profiles: Sequence[np.ndarray], scale: int, order: int = 1) -> float:
+    """DFA fluctuation F(n): RMS residual over every sample of every window, pooled across
+    profiles (one per gap-free segment; windows never span two).
+
+    This is Peng et al.'s (1995) definition: one RMS over all residuals, not the mean of
+    each window's RMS. The two differ most at small windows, where per-window RMS is noisy
+    and averaging it biases the exponent upward (white noise over 4-16 samples gave ~0.64
+    instead of the ~0.59 that nolds and this definition give).
+    """
+    total, count = 0.0, 0
+    for profile in profiles:
+        sum_sq, n = _window_residuals(profile, scale, order)
+        total += sum_sq
+        count += n
+    return float(np.sqrt(total / count))
 
 
 def dfa_exponent(signal: np.ndarray, min_scale: int = 8, max_scale: int | None = None, order: int = 1) -> float:
@@ -121,34 +176,46 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8, max_scale: int | None =
 
     Fits the log-log slope of fluctuation against window size over 8 log-spaced window
     sizes from min_scale to max_scale samples. Without max_scale, the range runs to a
-    quarter of the series length. With max_scale, the series must be at least
-    4 * max_scale samples long (so the largest window still averages over four windows);
+    quarter of the series length. With max_scale, the series must hold at least four
+    windows of max_scale samples (so the largest window still averages over four);
     otherwise the result is NaN rather than a slope over a silently truncated range.
     `order` is the detrending polynomial's degree (1 = DFA1, 2 = DFA2, ...); windows need
     more than order + 1 samples to leave any residual, so smaller ones are skipped.
+
+    Given Segments, each segment gets its own profile and windows are taken only within a
+    segment, so no window spans a gap; window counts are summed across segments, and
+    without max_scale, scales with fewer than four windows in total are dropped (a single
+    series keeps the original default range, which can go below four for short series).
 
     Returns NaN for fewer than 16 samples or when fluctuation is zero at some scale
     (e.g. a constant or perfectly linear signal), where the log-log slope is undefined.
     """
     if int(order) != order or order < 1:
         raise ValueError(f"DFA order must be a positive integer, got {order!r}.")
-    data = np.asarray(signal, dtype=float)
+    segments = _as_segments(signal)
+    data = np.concatenate(segments)
     if data.size < 16:
         return np.nan
-    if max_scale is not None and data.size < 4 * max_scale:
+
+    def n_windows(scale: int) -> int:
+        return sum(segment.size // scale for segment in segments)
+
+    if max_scale is not None and n_windows(max_scale) < 4:
         return np.nan
 
-    detrended = data - np.mean(data)
-    profile = np.cumsum(detrended)
-    n = len(profile)
+    mean = np.mean(data)
+    profiles = [np.cumsum(segment - mean) for segment in segments]
+    n = data.size
     upper = max_scale if max_scale is not None else max(8, n // 4)
     scales = np.unique(np.array([int(s) for s in np.geomspace(min_scale, upper, num=8)], dtype=int))
     scales = scales[scales >= order + 2]
-    scales = scales[scales < n]
+    scales = scales[scales < max(segment.size for segment in segments)]
+    if max_scale is None and len(segments) > 1:
+        scales = np.array([s for s in scales if n_windows(int(s)) >= 4], dtype=int)
     if scales.size < 2:
         return np.nan
 
-    rms = [_detrended_fluctuation(profile, int(scale), int(order)) for scale in scales]
+    rms = [_detrended_fluctuation(profiles, int(scale), int(order)) for scale in scales]
 
     if len(rms) < 2 or np.any(np.asarray(rms) <= 0):
         return np.nan
@@ -293,10 +360,12 @@ def compute_complexity_metrics(
     If `metrics` is omitted, DEFAULT_METRICS are computed. Pass an explicit
     subset (e.g. a domain profile's `recommended_metrics`) to compute only those.
     `parameters` maps a metric name to keyword arguments that override its defaults
-    (e.g. a domain profile's `metric_parameters`).
+    (e.g. a domain profile's `metric_parameters`). `signal` may be Segments, which every
+    metric handles gap-aware.
     """
     parameters = parameters or {}
-    signal = np.asarray(signal, dtype=float)
+    if not isinstance(signal, Segments):
+        signal = np.asarray(signal, dtype=float)
     selected = tuple(metrics) if metrics else DEFAULT_METRICS
     unknown = [name for name in selected if name not in _METRIC_FUNCTIONS]
     if unknown:

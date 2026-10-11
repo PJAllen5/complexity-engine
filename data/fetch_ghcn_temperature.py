@@ -28,8 +28,12 @@ GHCN-Daily is distributed by NOAA NCEI without use restrictions -- cite Menne et
 Output columns: station_id, station, condition (island/continental), setting
 (island/coastal/inland), time (ISO date), tmax_anomaly (degrees C).
 
+With --all-stations, the coverage rule is skipped and every station with at least
+MIN_VALID_DAYS valid days is written to data/external/ghcn_tmax_anomaly_all.csv, for analysis
+with gap_policy: segment, which handles gaps in the engine instead of excluding stations.
+
 Usage:
-    python data/fetch_ghcn_temperature.py
+    python data/fetch_ghcn_temperature.py [--all-stations]
 """
 
 from __future__ import annotations
@@ -74,6 +78,7 @@ STATIONS = [
 DATA_DIR = Path(__file__).resolve().parent
 CACHE_DIR = DATA_DIR / "external" / "ghcnd" / "by_station"
 OUTPUT_CSV = DATA_DIR / "external" / "ghcn_tmax_anomaly.csv"
+ALL_STATIONS_CSV = DATA_DIR / "external" / "ghcn_tmax_anomaly_all.csv"
 
 MIN_VALID_DAYS = 12_000
 MIN_COVERAGE = 0.8
@@ -133,6 +138,9 @@ def deseasonalize(tmax: pd.Series) -> pd.Series:
 
 
 def main() -> int:
+    all_stations = "--all-stations" in sys.argv[1:]
+    min_coverage = 0.0 if all_stations else MIN_COVERAGE
+    output_csv = ALL_STATIONS_CSV if all_stations else OUTPUT_CSV
     frames = []
     for station, setting, candidates in STATIONS:
         records = {station_id: read_tmax(_download(station_id)) for station_id in candidates}
@@ -140,8 +148,8 @@ def main() -> int:
         tmax = records[station_id]
         span = f"{tmax.index[0].year}-{tmax.index[-1].year}" if len(tmax) else "no data"
         status = f"{station} ({station_id}, {span}): {len(tmax)} valid days, {coverage(tmax):.0%} coverage"
-        if len(tmax) < MIN_VALID_DAYS or coverage(tmax) < MIN_COVERAGE:
-            print(f"{status} -- excluded (needs >= {MIN_VALID_DAYS} days and >= {MIN_COVERAGE:.0%} coverage)")
+        if len(tmax) < MIN_VALID_DAYS or coverage(tmax) < min_coverage:
+            print(f"{status} -- excluded (needs >= {MIN_VALID_DAYS} days and >= {min_coverage:.0%} coverage)")
             continue
         print(f"{status} -- included")
         anomaly = deseasonalize(tmax)
@@ -158,10 +166,10 @@ def main() -> int:
             )
         )
     df = pd.concat(frames, ignore_index=True)
-    OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(OUTPUT_CSV, index=False, float_format="%.3f")
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_csv, index=False, float_format="%.3f")
     counts = df.drop_duplicates("station_id")["condition"].value_counts().to_dict()
-    print(f"Wrote {len(df)} daily anomalies from {sum(counts.values())} stations {counts} to {OUTPUT_CSV}")
+    print(f"Wrote {len(df)} daily anomalies from {sum(counts.values())} stations {counts} to {output_csv}")
     return 0
 
 
