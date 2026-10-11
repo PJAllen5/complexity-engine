@@ -116,6 +116,8 @@ def test_analyze_network_default_is_undirected_and_unaffected(tmp_path):
     assert "mean_in_degree" not in metrics.columns
     assert result["node_centrality"].empty
     assert result["centrality_csv"] is None
+    assert result["node_communities"].empty
+    assert result["communities_csv"] is None
 
 
 def test_analyze_network_compute_centrality_writes_output(tmp_path):
@@ -265,3 +267,18 @@ def test_analyze_network_writes_self_contained_html_report(tmp_path):
     html = html_path.read_text(encoding="utf-8")
     assert "<h1>Network Analysis Report</h1>" in html
     assert "data:image/png;base64," in html
+
+
+def test_analyze_network_compute_communities_writes_output(tmp_path):
+    rows = [("a", "b"), ("b", "c"), ("c", "a"), ("x", "y"), ("y", "z"), ("z", "x"), ("c", "x")]
+    csv_path = _write_edge_csv(tmp_path, [{"source": s, "target": t} for s, t in rows])
+
+    result = analyze_network(csv_path, condition_col=None, compute_communities=True, output_dir=tmp_path / "outputs")
+
+    communities = result["node_communities"]
+    assert set(communities["node"]) == set("abcxyz")
+    assert communities["community"].nunique() == 2
+    assert (tmp_path / "outputs" / "node_communities.csv").exists()
+    report = (tmp_path / "outputs" / "report.md").read_text(encoding="utf-8")
+    assert "## Communities" in report
+    assert "- all: 2 communities, sizes 3, 3" in report

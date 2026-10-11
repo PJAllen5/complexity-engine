@@ -161,3 +161,39 @@ network:
     mean_degree: A network dominated by a few very high-degree hub nodes rather than a roughly uniform degree is the signature of scale-free, preferential-attachment growth (Barabási & Albert, 1999) rather than a random or regular network; this summary reports the mean only, so check the degree-distribution plot for whether a few hubs dominate.
     small_world_sigma: Sigma directly formalizes the Watts-Strogatz small-world criterion (Watts & Strogatz, 1998; Humphries & Gurney, 2008) by comparing clustering and path length against matched random reference graphs; sigma greater than 1 indicates small-world structure (elevated clustering without a proportional cost in path length), while sigma at or below 1 indicates the network is no more clustered than a comparable random graph.
     small_world_omega: Omega compares the network against both a random and a lattice reference simultaneously (Telesford et al., 2011); values near 0 indicate small-world structure, negative values indicate the network is more lattice-like (highly clustered but with long paths), and positive values indicate the network is more random-like.
+
+social_network:
+  name: social_network
+  description: Social networks of people or organizations (friendship, collaboration, communication), focused on cohesive subgroups, triadic closure, and how quickly anyone can reach anyone else.
+  analysis_question: Does the network split into cohesive subgroups, are friends of friends connected (triadic closure), and is it a small world in which a few bridging ties link otherwise separate groups?
+  recommended_metrics:
+    - n_nodes
+    - n_edges
+    - mean_degree
+    - density
+    - avg_clustering
+    - transitivity
+    - modularity
+    - avg_shortest_path_length
+    - n_connected_components
+  expected_columns:
+    - source
+    - target
+  signal_roles:
+    source: One person or organization in a tie.
+    target: The other person or organization in the tie (for directed data such as messages, the recipient).
+    weight: Optional tie strength, such as interaction count or number of joint papers; used for clustering and modularity, not for path length.
+    condition: Optional label for comparing networks, such as two time periods, groups, or communities.
+  interpretation_rules:
+    n_nodes: Number of people or organizations with at least one tie; isolates aren't in an edge list, so they are never counted.
+    n_edges: Number of distinct ties. Many social datasets record repeated interactions; those collapse into one tie unless a weight column keeps their count.
+    mean_degree: Average number of ties per person. Social networks are usually sparse, with a few people holding far more ties than average, so check the degree-distribution plot rather than reading the mean as typical.
+    density: Fraction of all possible ties that exist. It falls as a network grows, since each person can only maintain so many ties, so compare density only between networks of similar size.
+    avg_clustering: How often two of a person's contacts also know each other. High clustering reflects triadic closure, in which strong ties to a shared contact make a tie between the two likely (Granovetter, 1973). Collaboration networks are far more clustered than random networks of the same size and density (Newman, 2001).
+    transitivity: Network-wide share of connected triples that close into triangles. When it is well below average clustering, low-degree people sit in tight groups while high-degree people span groups whose members don't know each other.
+    modularity: How cleanly the network divides into cohesive subgroups, with dense ties inside each and few between. Social communities often follow real divisions; in Zachary's karate club they matched the factions the club later split into (Zachary, 1977; Girvan & Newman, 2002). High modularity can mean homophily, since people tie to similar others (McPherson et al., 2001), or segregation, or simply separate settings such as departments. It does not say which attribute drives the division. The few ties between communities tend to be weak ties, which carry new information between groups (Granovetter, 1973), and the people holding them broker across structural holes (Burt, 1992); run with --compute-centrality and look for high betweenness to find them.
+    avg_shortest_path_length: Average number of steps between two people in the largest connected component. Short paths despite high clustering make a small world (Milgram, 1967; Watts & Strogatz, 1998), and collaboration networks have paths about as short as random networks of the same size (Newman, 2001).
+    n_connected_components: Number of separate pieces. Real social networks usually have one giant component plus many small groups that never connect to it, such as authors who only wrote with each other. Path length covers the giant component only.
+    small_world_sigma: Sigma compares clustering and path length against random networks with the same degrees (Humphries & Gurney, 2008); above 1 means small-world structure. It needs a fully connected network, so it is NaN for most real social networks unless the giant component is analyzed on its own.
+    small_world_omega: Omega compares the network with both a random and a lattice reference (Telesford et al., 2011); near 0 means small-world, negative lattice-like, positive random-like. Like sigma, it needs a fully connected network.
+

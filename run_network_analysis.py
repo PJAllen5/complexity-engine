@@ -22,6 +22,7 @@ def main() -> None:
         help="Also compute the small-world sigma/omega statistics (compares against randomized reference graphs). "
         "Only well-defined for an undirected, fully connected network with >= 4 nodes; NaN otherwise.",
     )
+    parser.add_argument("--compute-communities", action="store_true", help="Also write each node's detected community (the partition modularity scores) to node_communities.csv.")
     parser.add_argument("--random-seed", type=int, default=42, help="Seed for the randomized reference graphs used by --compute-small-world.")
     parser.add_argument("--domain", type=str, default="network", help="Domain profile to apply.")
     parser.add_argument("--domain-config", type=str, default=None, help="Optional path to a YAML or JSON config file containing custom domain profiles.")
@@ -45,6 +46,7 @@ def main() -> None:
         condition_col=args.condition_col or None,
         directed=args.directed,
         compute_centrality=args.compute_centrality,
+        compute_communities=args.compute_communities,
         compute_small_world=args.compute_small_world,
         random_seed=args.random_seed,
         output_dir=args.output_dir,
@@ -62,6 +64,8 @@ def main() -> None:
     print(f"Saved network metrics to: {result['metrics_csv']}")
     if result["centrality_csv"]:
         print(f"Saved node centrality to: {result['centrality_csv']}")
+    if result["communities_csv"]:
+        print(f"Saved node communities to: {result['communities_csv']}")
     print(f"Saved report to: {result['report_md']}")
     print(f"Saved self-contained HTML report to: {result['report_html']}")
 

@@ -27,6 +27,7 @@ from .network_metrics import (
     build_graph,
     compute_network_metrics,
     compute_node_centrality,
+    compute_node_communities,
     compute_small_world_metrics,
 )
 from .plots import plot_degree_distribution
@@ -120,6 +121,7 @@ def analyze_network(
     directed: bool = False,
     compute_centrality: bool = False,
     compute_small_world: bool = False,
+    compute_communities: bool = False,
     random_seed: int = 42,
     output_dir: str | Path = "outputs",
     domain: str | None = "network",
@@ -173,6 +175,18 @@ def analyze_network(
         centrality_df = pd.concat(centrality_frames, ignore_index=True) if centrality_frames else pd.DataFrame()
         centrality_path = output_dir / "node_centrality.csv"
         centrality_df.to_csv(centrality_path, index=False)
+
+    communities_df = pd.DataFrame()
+    communities_path = None
+    if compute_communities:
+        community_frames = []
+        for condition, graph in graphs.items():
+            frame = compute_node_communities(graph)
+            frame.insert(0, "condition", condition)
+            community_frames.append(frame)
+        communities_df = pd.concat(community_frames, ignore_index=True) if community_frames else pd.DataFrame()
+        communities_path = output_dir / "node_communities.csv"
+        communities_df.to_csv(communities_path, index=False)
 
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -231,6 +245,18 @@ def analyze_network(
     if compute_centrality and not centrality_df.empty:
         report_lines.append("## Node centrality")
         report_lines.extend(_as_code_block(centrality_df.to_string(index=False)))
+    if compute_communities and not communities_df.empty:
+        report_lines.append("## Communities")
+        report_lines.append(
+            "Detected by greedy modularity maximization; this is the partition the modularity metric "
+            f"scores. Per-node assignments are in {communities_path.name}."
+        )
+        report_lines.append("")
+        for condition, frame in communities_df.groupby("condition", sort=False):
+            sizes = frame.drop_duplicates("community").sort_values("community")["community_size"].tolist()
+            shown = ", ".join(str(size) for size in sizes[:10]) + (", ..." if len(sizes) > 10 else "")
+            report_lines.append(f"- {condition}: {len(sizes)} communities, sizes {shown}")
+        report_lines.append("")
     if degree_plot_path:
         report_lines.extend(["## Visualizations", f"![degree_distribution](plots/{Path(degree_plot_path).name})", ""])
     report_lines.extend(_generate_network_interpretation_lines(metrics_df, domain_profile))
@@ -246,8 +272,10 @@ def analyze_network(
         "provenance": provenance,
         "network_metrics_summary": metrics_df,
         "node_centrality": centrality_df,
+        "node_communities": communities_df,
         "metrics_csv": str(metrics_path),
         "centrality_csv": str(centrality_path) if centrality_path else None,
+        "communities_csv": str(communities_path) if communities_path else None,
         "degree_plot_path": degree_plot_path,
         "report_md": str(report_path),
         "report_html": html_path,
