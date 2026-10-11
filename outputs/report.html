@@ -38,6 +38,19 @@ ul { padding-left: 1.5rem; }
 <li>Rows dropped for missing values in ['signal', 'condition']: 0</li>
 <li>Rows analyzed: 1800</li>
 </ul>
+<h2>Sampling</h2>
+<p>Each unit's sampling interval is the median spacing of 'timestamp'; a gap is a spacing over 1.5 intervals. Per-unit values are in sampling_by_unit.csv.</p>
+<ul>
+<li>Every unit is regularly sampled with no gaps.</li>
+</ul>
+<pre><code>condition subject_id  n_samples interval  coverage  n_gaps longest_gap  duplicate_times  spacing_cv  irregular
+     rest        s01        300       1s       1.0       0                            0         0.0      False
+     rest        s02        300       1s       1.0       0                            0         0.0      False
+     rest        s03        300       1s       1.0       0                            0         0.0      False
+     task        s01        300       1s       1.0       0                            0         0.0      False
+     task        s02        300       1s       1.0       0                            0         0.0      False
+     task        s03        300       1s       1.0       0                            0         0.0      False
+</code></pre>
 <h2>Condition summary</h2>
 <pre><code>condition  mean_signal  std_signal  min_signal  max_signal  median signal
      rest    72.254667    3.310537        64.2        81.2    72.3 signal
