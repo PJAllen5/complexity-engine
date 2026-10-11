@@ -86,6 +86,27 @@ attention:
     dfa_exponent: Changes in long-range temporal correlation during attentional engagement point to shifts in how strongly past states constrain present ones (Hopfield, 1982); stronger persistence is consistent with sustained, attractor-like engagement, while a drop toward random-walk-like behavior (~0.5) suggests more moment-to-moment reactivity.
     mutual_information: Under a predictive-processing account, attention coordinates precision-weighting across signals (Friston, 2010); increased mutual information when attention is engaged is consistent with shared top-down control linking the signals, while decreased coupling suggests they are being processed more independently.
 
+heart_rate_variability:
+  name: heart_rate_variability
+  description: Beat-to-beat heart rate (RR or NN interval) dynamics, focused on regularity and fractal scaling as markers of healthy cardiovascular regulation.
+  analysis_question: Does beat-to-beat heart rate keep the irregular, fractal-like fluctuation of healthy cardiac regulation, or does it lose complexity, as reported with aging and disease?
+  recommended_metrics:
+    - sample_entropy
+    - dfa_short_term
+    - dfa_long_term
+  expected_columns:
+    - rr_interval
+    - condition
+    - subject_id
+  signal_roles:
+    primary_signal: Interbeat (RR or NN) interval series, one value per heartbeat, with intervals next to ectopic beats or detection artifacts removed.
+    condition: Group or state being compared, such as young vs elderly or rest vs tilt.
+    covariate: Optional metadata such as age, sex, medication, or recording session.
+  interpretation_rules:
+    sample_entropy: Healthy heart rate is irregular from beat to beat; lower sample entropy (Richman & Moorman, 2000) means more regular, predictable dynamics. Reduced heart-rate entropy has been reported with aging (Kaplan et al., 1991), in line with the view that aging and disease bring a loss of physiological complexity (Lipsitz & Goldberger, 1992). Sample entropy depends on its tolerance r and on series length, so only compare values computed with the same settings.
+    dfa_short_term: Short-range DFA exponent over windows of 4-16 beats, the range used for heart-rate DFA (Peng et al., 1995). Healthy elderly subjects show a higher short-range exponent than young subjects (Iyengar et al., 1996), meaning smoother, more random-walk-like fluctuation over a few beats, consistent with a single dominant regulatory time scale replacing the multi-scale control of the young heart.
+    dfa_long_term: Long-range DFA exponent over windows of 16-64 beats (Peng et al., 1995). Values near 1.0 indicate the 1/f-like fractal scaling of healthy heart rate, and a drop toward 0.5 indicates a loss of long-range correlation, which has been reported in healthy elderly subjects (Iyengar et al., 1996). That study's long-range exponent may span a wider window than 16-64 beats, so compare directions rather than absolute values.
+
 network:
   name: network
   description: Network-science analysis of graph-structured data, focused on small-world structure, community organization, and connectivity.

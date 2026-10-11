@@ -12,7 +12,9 @@ from complexity_engine.analysis import (
     unit_complexity_summary,
 )
 from complexity_engine.metrics import (
+    DEFAULT_METRICS,
     compare_conditions,
+    compute_complexity_metrics,
     dfa_exponent,
     effective_sample_size,
     lag1_autocorrelation,
@@ -49,22 +51,22 @@ def _brute_force_sample_entropy(data, m=2, r=0.2):
 
 
 def _brute_force_dfa_exponent(data, min_scale=8):
-    """The original per-window np.polyfit implementation, kept as a reference for the vectorized version."""
+    """Per-window np.polyfit DFA with Peng et al.'s fluctuation (one RMS over all residuals),
+    kept as a reference for the vectorized version."""
     data = np.asarray(data, dtype=float)
     profile = np.cumsum(data - np.mean(data))
     n = len(profile)
     scales = np.unique(np.array([int(s) for s in np.geomspace(min_scale, max(8, n // 4), num=8)], dtype=int))
     scales = scales[(scales >= 2) & (scales < n)]
-    rms = []
+    fluctuations = []
     for scale in scales:
-        residuals = []
+        squared_residuals = []
         for idx in range(0, n - scale + 1, scale):
             segment = profile[idx : idx + scale]
             x = np.arange(scale)
-            residual = segment - np.polyval(np.polyfit(x, segment, 1), x)
-            residuals.append(np.sqrt(np.mean(residual**2)))
-        rms.append(np.mean(residuals))
-    slope, _ = np.polyfit(np.log(scales), np.log(rms), 1)
+            squared_residuals.extend((segment - np.polyval(np.polyfit(x, segment, 1), x)) ** 2)
+        fluctuations.append(np.sqrt(np.mean(squared_residuals)))
+    slope, _ = np.polyfit(np.log(scales), np.log(fluctuations), 1)
     return float(slope)
 
 
@@ -91,6 +93,34 @@ def test_sample_entropy_matches_brute_force_reference_exactly():
 def test_dfa_exponent_matches_per_window_polyfit_reference():
     for name, series in _regression_series().items():
         assert dfa_exponent(series) == pytest.approx(_brute_force_dfa_exponent(series), abs=1e-10), name
+
+
+
+def test_scale_range_dfa_metrics_on_canonical_signals():
+    walk = np.cumsum(np.random.default_rng(10).standard_normal(4000))
+    result = compute_complexity_metrics(walk, metrics=["dfa_short_term", "dfa_long_term"])
+    assert result["dfa_short_term"] == pytest.approx(1.5, abs=0.1)
+    assert result["dfa_long_term"] == pytest.approx(1.5, abs=0.1)
+
+
+def test_scale_range_dfa_separates_a_crossover():
+    # AR(1) is random-walk-like below its correlation time and white-noise-like above it:
+    # the two-regime pattern Iyengar et al. (1996) modelled in elderly heart rate. A single
+    # exponent over the whole range would blur the two.
+    x = sps.lfilter([1.0], [1.0, -0.7], np.random.default_rng(11).standard_normal(4000))
+    result = compute_complexity_metrics(x, metrics=["dfa_short_term", "dfa_long_term"])
+    assert result["dfa_short_term"] - result["dfa_long_term"] > 0.25
+
+
+def test_scale_range_dfa_is_nan_when_series_too_short_for_its_range():
+    rng = np.random.default_rng(12)
+    assert np.isnan(dfa_exponent(rng.standard_normal(255), min_scale=16, max_scale=64))
+    assert np.isfinite(dfa_exponent(rng.standard_normal(256), min_scale=16, max_scale=64))
+
+
+def test_scale_range_dfa_metrics_are_opt_in():
+    assert DEFAULT_METRICS == ("sample_entropy", "spectral_entropy", "dfa_exponent")
+    assert set(compute_complexity_metrics(np.random.default_rng(13).standard_normal(300))) == set(DEFAULT_METRICS)
 
 
 def test_sample_entropy_handles_long_series_near_theoretical_value():

@@ -92,9 +92,15 @@ def spectral_entropy(signal: np.ndarray) -> float:
     return float(entropy / max_entropy)
 
 
-def _mean_detrended_rms(profile: np.ndarray, scale: int) -> float:
-    """Mean RMS residual after removing a least-squares line from each non-overlapping
-    window of `scale` samples (a trailing partial window is dropped).
+def _detrended_fluctuation(profile: np.ndarray, scale: int) -> float:
+    """DFA fluctuation F(n): RMS residual, over every sample, after removing a least-squares
+    line from each non-overlapping window of `scale` samples (a trailing partial window is
+    dropped).
+
+    This is Peng et al.'s (1995) definition: one RMS over all residuals, not the mean of
+    each window's RMS. The two differ most at small windows, where per-window RMS is noisy
+    and averaging it biases the exponent upward (white noise over 4-16 samples gave ~0.64
+    instead of the ~0.59 that nolds and this definition give).
 
     Fits every window at once in closed form rather than calling np.polyfit per window.
     """
@@ -105,11 +111,17 @@ def _mean_detrended_rms(profile: np.ndarray, scale: int) -> float:
     windows_centered = windows - windows.mean(axis=1, keepdims=True)
     slopes = windows_centered @ x_centered / (x_centered @ x_centered)
     residuals = windows_centered - np.outer(slopes, x_centered)
-    return float(np.mean(np.sqrt(np.mean(residuals**2, axis=1))))
+    return float(np.sqrt(np.mean(residuals**2)))
 
 
-def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
+def dfa_exponent(signal: np.ndarray, min_scale: int = 8, max_scale: int | None = None) -> float:
     """Approximate the detrended fluctuation analysis exponent.
+
+    Fits the log-log slope of fluctuation against window size over 8 log-spaced window
+    sizes from min_scale to max_scale samples. Without max_scale, the range runs to a
+    quarter of the series length. With max_scale, the series must be at least
+    4 * max_scale samples long (so the largest window still averages over four windows);
+    otherwise the result is NaN rather than a slope over a silently truncated range.
 
     Returns NaN for fewer than 16 samples or when fluctuation is zero at some scale
     (e.g. a constant or perfectly linear signal), where the log-log slope is undefined.
@@ -117,17 +129,20 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8) -> float:
     data = np.asarray(signal, dtype=float)
     if data.size < 16:
         return np.nan
+    if max_scale is not None and data.size < 4 * max_scale:
+        return np.nan
 
     detrended = data - np.mean(data)
     profile = np.cumsum(detrended)
     n = len(profile)
-    scales = np.unique(np.array([int(s) for s in np.geomspace(min_scale, max(8, n // 4), num=8)], dtype=int))
+    upper = max_scale if max_scale is not None else max(8, n // 4)
+    scales = np.unique(np.array([int(s) for s in np.geomspace(min_scale, upper, num=8)], dtype=int))
     scales = scales[scales >= 2]
     scales = scales[scales < n]
     if scales.size < 2:
         return np.nan
 
-    rms = [_mean_detrended_rms(profile, int(scale)) for scale in scales]
+    rms = [_detrended_fluctuation(profile, int(scale)) for scale in scales]
 
     if len(rms) < 2 or np.any(np.asarray(rms) <= 0):
         return np.nan
@@ -233,17 +248,27 @@ _METRIC_FUNCTIONS = {
     "sample_entropy": lambda signal: sample_entropy(signal, m=2, r=0.2),
     "spectral_entropy": spectral_entropy,
     "dfa_exponent": dfa_exponent,
+    # Separate short- and long-range exponents, for signals whose correlation structure
+    # changes with scale. The ranges are the heart-rate convention (Peng et al., 1995),
+    # in samples (beats for RR intervals); other domains may need different ranges.
+    "dfa_short_term": lambda signal: dfa_exponent(signal, min_scale=4, max_scale=16),
+    "dfa_long_term": lambda signal: dfa_exponent(signal, min_scale=16, max_scale=64),
 }
+
+
+# Computed when a domain profile doesn't name its metrics; the scale-range DFA variants
+# are opt-in, since they're only meaningful for signals with a known crossover scale.
+DEFAULT_METRICS = ("sample_entropy", "spectral_entropy", "dfa_exponent")
 
 
 def compute_complexity_metrics(signal: np.ndarray, metrics: Sequence[str] | None = None) -> dict[str, float]:
     """Compute complexity metrics for a signal.
 
-    If `metrics` is omitted, every supported metric is computed. Pass an explicit
+    If `metrics` is omitted, DEFAULT_METRICS are computed. Pass an explicit
     subset (e.g. a domain profile's `recommended_metrics`) to compute only those.
     """
     signal = np.asarray(signal, dtype=float)
-    selected = tuple(metrics) if metrics else tuple(_METRIC_FUNCTIONS)
+    selected = tuple(metrics) if metrics else DEFAULT_METRICS
     unknown = [name for name in selected if name not in _METRIC_FUNCTIONS]
     if unknown:
         supported = ", ".join(sorted(_METRIC_FUNCTIONS))
