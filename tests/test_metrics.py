@@ -50,7 +50,7 @@ def _brute_force_sample_entropy(data, m=2, r=0.2):
     return np.nan if b_m == 0 or a_m == 0 else float(-np.log(a_m / b_m))
 
 
-def _brute_force_dfa_exponent(data, min_scale=8):
+def _brute_force_dfa_exponent(data, min_scale=8, order=1):
     """Per-window np.polyfit DFA with Peng et al.'s fluctuation (one RMS over all residuals),
     kept as a reference for the vectorized version."""
     data = np.asarray(data, dtype=float)
@@ -64,7 +64,7 @@ def _brute_force_dfa_exponent(data, min_scale=8):
         for idx in range(0, n - scale + 1, scale):
             segment = profile[idx : idx + scale]
             x = np.arange(scale)
-            squared_residuals.extend((segment - np.polyval(np.polyfit(x, segment, 1), x)) ** 2)
+            squared_residuals.extend((segment - np.polyval(np.polyfit(x, segment, order), x)) ** 2)
         fluctuations.append(np.sqrt(np.mean(squared_residuals)))
     slope, _ = np.polyfit(np.log(scales), np.log(fluctuations), 1)
     return float(slope)
@@ -93,6 +93,39 @@ def test_sample_entropy_matches_brute_force_reference_exactly():
 def test_dfa_exponent_matches_per_window_polyfit_reference():
     for name, series in _regression_series().items():
         assert dfa_exponent(series) == pytest.approx(_brute_force_dfa_exponent(series), abs=1e-10), name
+
+
+def test_higher_order_dfa_matches_per_window_polyfit_reference():
+    for name, series in _regression_series().items():
+        if name == "short":
+            continue
+        for order in (2, 3):
+            expected = _brute_force_dfa_exponent(series, order=order)
+            assert dfa_exponent(series, order=order) == pytest.approx(expected, abs=1e-8), (name, order)
+
+
+def test_dfa2_removes_a_linear_trend_that_inflates_dfa1():
+    # DFAn removes polynomial trends of degree n-1 from the signal, so a linear trend (e.g.
+    # urban warming in a temperature record) inflates DFA1 but not DFA2.
+    noise = np.random.default_rng(14).standard_normal(20000)
+    trended = noise + np.linspace(0.0, 10.0, noise.size)
+    assert dfa_exponent(trended, min_scale=30, max_scale=3000, order=1) > 0.7
+    assert dfa_exponent(trended, min_scale=30, max_scale=3000, order=2) == pytest.approx(0.5, abs=0.05)
+
+
+def test_dfa_rejects_invalid_order():
+    for order in (0, -1, 1.5):
+        with pytest.raises(ValueError, match="positive integer"):
+            dfa_exponent(np.random.default_rng(15).standard_normal(100), order=order)
+
+
+def test_metric_parameters_override_defaults():
+    x = np.random.default_rng(16).standard_normal(5000)
+    parameters = {"dfa_exponent": {"min_scale": 10, "max_scale": 1000, "order": 2}}
+    result = compute_complexity_metrics(x, metrics=["dfa_exponent", "dfa_long_term"], parameters=parameters)
+    assert result["dfa_exponent"] == dfa_exponent(x, min_scale=10, max_scale=1000, order=2)
+    # Only the named metric changes; dfa_long_term keeps its own defaults.
+    assert result["dfa_long_term"] == dfa_exponent(x, min_scale=16, max_scale=64)
 
 
 

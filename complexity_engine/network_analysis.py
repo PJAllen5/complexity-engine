@@ -15,7 +15,13 @@ from pathlib import Path
 import pandas as pd
 
 from .analysis import _as_code_block, _collapse_blank_lines, _describe_data_source, clean_dataset, load_dataset
-from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
+from .domain_profiles import (
+    DomainProfile,
+    get_domain_profile,
+    load_domain_profiles,
+    validate_metric_parameters,
+    validate_recommended_metrics,
+)
 from .network_metrics import (
     NETWORK_METRIC_KEYS,
     build_graph,
@@ -122,6 +128,8 @@ def analyze_network(
     load_domain_profiles(domain_config)
     domain_profile = get_domain_profile(domain)
     validate_recommended_metrics(domain_profile, NETWORK_METRIC_KEYS)
+    # Network metrics take no parameters; this rejects any rather than silently ignoring them.
+    validate_metric_parameters(domain_profile, {})
     df = load_edge_list(data_path)
     missing_columns = _missing_expected_columns(df, domain_profile)
     has_condition = condition_col is not None and condition_col in df.columns

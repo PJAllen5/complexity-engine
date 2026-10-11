@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -18,6 +18,7 @@ class DomainProfile:
     interpretation_rules: dict[str, str] = field(default_factory=dict)
     expected_columns: tuple[str, ...] = field(default_factory=tuple)
     analysis_question: str = ""
+    metric_parameters: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any], key: str | None = None) -> "DomainProfile":
@@ -27,6 +28,12 @@ class DomainProfile:
         interpretation_rules = data.get("interpretation_rules", {})
         expected_columns = tuple(data.get("expected_columns", ()))
         analysis_question = data.get("analysis_question", "")
+        metric_parameters = data.get("metric_parameters") or {}
+        if not isinstance(metric_parameters, dict) or not all(isinstance(v, dict) for v in metric_parameters.values()):
+            raise ValueError(
+                f"Domain profile '{normalized_name}': metric_parameters must map each metric name to a "
+                "mapping of parameter names to values, e.g. {dfa_exponent: {min_scale: 30}}."
+            )
         return cls(
             name=normalized_name,
             description=str(data.get("description", "")),
@@ -35,6 +42,7 @@ class DomainProfile:
             interpretation_rules={str(k): str(v) for k, v in dict(interpretation_rules).items()},
             expected_columns=tuple(str(col) for col in expected_columns),
             analysis_question=str(analysis_question),
+            metric_parameters={str(k): {str(p): v for p, v in v.items()} for k, v in metric_parameters.items()},
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -46,6 +54,7 @@ class DomainProfile:
             "analysis_question": self.analysis_question,
             "signal_roles": dict(self.signal_roles),
             "interpretation_rules": dict(self.interpretation_rules),
+            "metric_parameters": {k: dict(v) for k, v in self.metric_parameters.items()},
         }
 
 
@@ -223,6 +232,33 @@ def validate_recommended_metrics(profile: DomainProfile, known_metrics: Collecti
             f"Domain profile '{profile.name}' lists unknown recommended_metrics {unknown}; "
             f"supported metrics are: {supported}."
         )
+
+
+def validate_metric_parameters(profile: DomainProfile, accepted_parameters: Mapping[str, Collection[str]]) -> None:
+    """Raise a clear error if a profile's metric_parameters names a metric the pipeline
+    doesn't have, a metric the profile doesn't compute, or a parameter the metric doesn't
+    accept. Without this, a misspelled parameter would be silently ignored, and the run would
+    use the default setting while the profile appeared to configure it.
+    """
+    computed = set(profile.recommended_metrics)
+    for metric, parameters in profile.metric_parameters.items():
+        if metric not in accepted_parameters:
+            supported = ", ".join(sorted(accepted_parameters)) or "none"
+            raise ValueError(
+                f"Domain profile '{profile.name}' sets metric_parameters for unknown metric '{metric}'; "
+                f"metrics that take parameters here: {supported}."
+            )
+        if metric not in computed:
+            raise ValueError(
+                f"Domain profile '{profile.name}' sets metric_parameters for '{metric}', which isn't in its "
+                "recommended_metrics, so the parameters would have no effect."
+            )
+        unknown = sorted(set(parameters) - set(accepted_parameters[metric]))
+        if unknown:
+            raise ValueError(
+                f"Domain profile '{profile.name}' sets unknown parameter(s) {unknown} for '{metric}'; "
+                f"it accepts: {', '.join(accepted_parameters[metric])}."
+            )
 
 
 # Load any repository-level domain config if present at import time.

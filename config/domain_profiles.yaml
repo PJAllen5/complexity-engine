@@ -107,6 +107,31 @@ heart_rate_variability:
     dfa_short_term: Short-range DFA exponent over windows of 4-16 beats, the range used for heart-rate DFA (Peng et al., 1995). Healthy elderly subjects show a higher short-range exponent than young subjects (Iyengar et al., 1996), meaning smoother, more random-walk-like fluctuation over a few beats, consistent with a single dominant regulatory time scale replacing the multi-scale control of the young heart.
     dfa_long_term: Long-range DFA exponent over windows of 16-64 beats (Peng et al., 1995). Values near 1.0 indicate the 1/f-like fractal scaling of healthy heart rate, and a drop toward 0.5 indicates a loss of long-range correlation, which has been reported in healthy elderly subjects (Iyengar et al., 1996). That study's long-range exponent may span a wider window than 16-64 beats, so compare directions rather than absolute values.
 
+climate_temperature:
+  name: climate_temperature
+  description: Daily surface air temperature records, focused on long-range persistence -- how strongly a warm or cold anomaly carries over into the following weeks, months, and years.
+  analysis_question: Do daily temperature anomalies show long-range power-law persistence, and is it stronger where the ocean's heat capacity couples into the atmosphere (islands) than over the continents?
+  recommended_metrics:
+    - dfa_exponent
+  metric_parameters:
+    # Windows in days, starting well above the ~10-day weather-regime crossover and ending
+    # where the shortest records still hold four windows. DFA2 removes linear trends in the
+    # anomalies, such as urban warming, which would otherwise inflate the exponent.
+    dfa_exponent:
+      min_scale: 30
+      max_scale: 3000
+      order: 2
+  expected_columns:
+    - tmax_anomaly
+    - condition
+    - station_id
+  signal_roles:
+    primary_signal: Deseasonalized daily temperature (degrees C), one value per day, with the mean annual cycle removed by subtracting each calendar date's long-term mean.
+    condition: Station group being compared, such as island vs continental, or climate zone.
+    covariate: Optional station metadata such as setting (inland, coastal, island), elevation, or record length.
+  interpretation_rules:
+    dfa_exponent: DFA fluctuation exponent of temperature anomalies over windows of about a month to several years. An exponent of 0.5 means anomalies are uncorrelated beyond the weather time scale, and a higher one means power-law persistence, with correlations decaying as s^-gamma where gamma = 2 - 2*alpha. Continental and coastal stations show alpha close to 0.65 almost everywhere (Koscielny-Bunde et al., 1998; Eichner et al., 2003), while island stations range from 0.65 to 0.85 and average about 0.8, which is attributed to coupling with the slowly varying ocean (Eichner et al., 2003). Some analyses find inner-continental records closer to 0.5 (Fraedrich & Blender, 2003), so compare continental values against both. DFA order matters when records contain trends, so only compare exponents computed with the same order and window range.
+
 network:
   name: network
   description: Network-science analysis of graph-structured data, focused on small-world structure, community organization, and connectivity.

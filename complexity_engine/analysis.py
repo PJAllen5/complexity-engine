@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import itertools
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from .domain_profiles import DomainProfile, get_domain_profile, load_domain_profiles, validate_recommended_metrics
+from .domain_profiles import (
+    DomainProfile,
+    get_domain_profile,
+    load_domain_profiles,
+    validate_metric_parameters,
+    validate_recommended_metrics,
+)
 from .metrics import (
     _METRIC_FUNCTIONS,
     DEFAULT_METRICS,
@@ -17,6 +24,8 @@ from .metrics import (
     compute_complexity_metrics,
     descriptive_stats,
     effective_sample_size,
+    metric_parameter_names,
+    metric_settings,
     mutual_information,
 )
 from .plots import plot_complexity_metrics, plot_condition_comparison, plot_mutual_information_heatmap
@@ -135,6 +144,16 @@ def _describe_data_source(data_path: str | Path | Sequence[str | Path]) -> str:
     if isinstance(data_path, (str, Path)):
         return Path(data_path).name
     return ", ".join(Path(p).name for p in data_path)
+
+
+def _metric_settings_lines(domain_profile: DomainProfile) -> list[str]:
+    """Report the settings of every metric the profile configures, so the numbers can be
+    read and reproduced without opening the profile."""
+    lines = []
+    for metric, parameters in domain_profile.metric_parameters.items():
+        settings = ", ".join(f"{name}={value}" for name, value in metric_settings(metric, parameters).items())
+        lines.append(f"- Metric settings: {metric}({settings})")
+    return lines
 
 
 def _as_code_block(text: str) -> list[str]:
@@ -279,6 +298,7 @@ def unit_complexity_summary(
     metrics: Sequence[str] | None = None,
     unit_cols: Sequence[str] = (),
     time_col: str | None = None,
+    metric_parameters: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> pd.DataFrame:
     """Compute complexity metrics separately within each recording unit of each condition.
 
@@ -295,7 +315,7 @@ def unit_complexity_summary(
                 **dict(zip(unit_cols, unit_keys)),
                 "signal": signal_col,
                 "n_samples": int(values.size),
-                **compute_complexity_metrics(values, metrics=metrics),
+                **compute_complexity_metrics(values, metrics=metrics, parameters=metric_parameters),
             }
         )
     return pd.DataFrame.from_records(records)
@@ -309,13 +329,20 @@ def condition_complexity_summary(
     unit_cols: Sequence[str] = (),
     time_col: str | None = None,
     unit_summary: pd.DataFrame | None = None,
+    metric_parameters: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> pd.DataFrame:
     """Per-condition complexity summary: descriptive stats pooled over every sample in the
     condition, and each complexity metric averaged across recording units (NaN units skipped).
     """
     if unit_summary is None:
         unit_summary = unit_complexity_summary(
-            df, signal_col, condition_col=condition_col, metrics=metrics, unit_cols=unit_cols, time_col=time_col
+            df,
+            signal_col,
+            condition_col=condition_col,
+            metrics=metrics,
+            unit_cols=unit_cols,
+            time_col=time_col,
+            metric_parameters=metric_parameters,
         )
     metric_cols = list(metrics) if metrics else list(DEFAULT_METRICS)
     records = []
@@ -619,6 +646,7 @@ def analyze_dataset(
     load_domain_profiles(domain_config)
     domain_profile = get_domain_profile(domain)
     validate_recommended_metrics(domain_profile, _METRIC_FUNCTIONS.keys())
+    validate_metric_parameters(domain_profile, {name: metric_parameter_names(name) for name in _METRIC_FUNCTIONS})
     df = load_dataset(data_path)
     selected_signals = resolve_signal_columns(df, signal_cols=signal_cols if signal_cols is not None else signal_col)
     missing_columns = _missing_expected_columns(df, domain_profile)
@@ -636,7 +664,13 @@ def analyze_dataset(
         summary_frames.append(summarize_condition(df, signal_col=signal, condition_col=condition_col).assign(signal=signal))
         metrics = domain_profile.recommended_metrics or None
         unit_complexity = unit_complexity_summary(
-            df, signal_col=signal, condition_col=condition_col, metrics=metrics, unit_cols=selected_units, time_col=time_col
+            df,
+            signal_col=signal,
+            condition_col=condition_col,
+            metrics=metrics,
+            unit_cols=selected_units,
+            time_col=time_col,
+            metric_parameters=domain_profile.metric_parameters,
         )
         unit_complexity_frames.append(unit_complexity)
         complexity_frames.append(
@@ -703,6 +737,7 @@ def analyze_dataset(
         f"- Signal columns: {', '.join(selected_signals)}",
         f"- Condition column: {condition_col}",
         f"- Recording unit columns: {', '.join(selected_units) if selected_units else 'none'}",
+        *_metric_settings_lines(domain_profile),
         "",
     ]
     if domain_profile.signal_roles:
