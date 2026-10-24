@@ -186,7 +186,13 @@ def register_domain_profile(profile: DomainProfile) -> DomainProfile:
 
 def load_domain_profiles(config_path: str | Path | None = None) -> dict[str, DomainProfile]:
     if config_path is None:
+        here = Path(__file__).resolve().parent
         candidates = [
+            # an installed copy carries config/ inside the package (see pyproject.toml)
+            here / "config" / "domain_profiles.yaml",
+            here / "config" / "domain_profiles.yml",
+            here / "config" / "domain_profiles.json",
+            # a checkout of the repository: config/ at the top level
             Path(__file__).resolve().parents[1] / "config" / "domain_profiles.yaml",
             Path(__file__).resolve().parents[1] / "config" / "domain_profiles.yml",
             Path(__file__).resolve().parents[1] / "config" / "domain_profiles.json",
