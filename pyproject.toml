@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "complexity-engine"
+version = "0.1.0"
+description = "Domain-aware complexity and network analysis of scientific time series and graphs, grounded in a literature base."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "seaborn",
+    "networkx",
+    "markdown",
+    "PyYAML",
+]
+
+[project.optional-dependencies]
+# independent reference implementations used only by tests/test_metric_validation.py
+validation = ["antropy", "nolds", "scikit-learn"]
+dev = ["pytest", "antropy", "nolds", "scikit-learn"]
+
+[project.scripts]
+complexity-analysis = "complexity_engine.cli:timeseries_main"
+complexity-network = "complexity_engine.cli:network_main"
+
+[tool.setuptools]
+packages = ["complexity_engine", "complexity_engine.config"]
+# The domain profiles stay in config/ at the top of the repository (where people edit them);
+# an installed copy carries them inside the package as complexity_engine/config/.
+package-dir = {"complexity_engine.config" = "config"}
+
+[tool.setuptools.package-data]
+"complexity_engine.config" = ["*.yaml", "*.yml", "*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

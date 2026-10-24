@@ -131,17 +131,53 @@ observations), so it's kept as its own entry point (`network_analysis.py` /
 `DomainProfile` configuration layer — see the `network` and `social_network` profiles in
 `config/domain_profiles.yaml`.
 
+## Behavior profiles (video and microscope tracking)
+
+Four profiles interpret data exported by
+[behavetrack](https://github.com/PJAllen5/behavior-analyzer), which tracks animals, people,
+cells and neurons in video and microscope files. `behavetrack export-complexity` writes files
+in exactly the shapes these profiles expect, and can run them directly.
+
+| Profile | Pipeline | Data | Grounded in |
+|---|---|---|---|
+| `collective_behavior` | time series | per-frame group alignment (`polarization`), circling (`rotation`), speed and spacing; `session` = video | Vicsek et al., 1995; Couzin et al., 2002; Tunstrøm et al., 2013; Cavagna et al., 2010 |
+| `neural_activity` | time series | ΔF/F per neuron per frame (`dff`), units `session,neuron_id`; DFA windows start at 16 frames to clear calcium decay | Chen et al., 2013; Linkenkaer-Hansen et al., 2001; Beggs & Plenz, 2003 |
+| `animal_social_network` | network | who came near whom, weighted by seconds in contact | Krause et al., 2007; Wey et al., 2008; Farine & Whitehead, 2015; Lusseau & Newman, 2004 |
+| `neuronal_network` | network | neuron pairs whose activity is correlated above a threshold | Bullmore & Sporns, 2009; Rubinov & Sporns, 2010; van Wijk et al., 2010; Bonifazi et al., 2009 |
+
+```bash
+complexity-analysis --data collective_timeseries.csv --domain collective_behavior \
+  --signal-cols polarization,rotation,mean_speed_bl_s --unit-cols session
+complexity-analysis --data neural_timeseries.csv --domain neural_activity \
+  --signal-cols dff --unit-cols session,neuron_id
+complexity-network --data contact_network.csv --domain animal_social_network
+complexity-network --data functional_network.csv --domain neuronal_network
+```
+
+Their interpretation text points out what video tracking adds to the usual cautions: identity
+swaps split one animal into several nodes and add noise that raises entropy; proximity
+networks fill in with crowding and recording length, so compare against permuted networks;
+calcium indicators smooth spiking, which lowers entropy and sets the shortest meaningful DFA
+window; and correlation networks depend on the threshold, so compare them at equal density.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
 ## Repository structure
 
 ```text
 complexity-engine/
 ├── README.md
-├── run_analysis.py                  # time-series CLI entry point
-├── run_network_analysis.py          # network CLI entry point
+├── LICENSE                          # MIT
+├── pyproject.toml                   # makes it installable: pip install -e .
+├── run_analysis.py                  # time-series CLI entry point (same as complexity-analysis)
+├── run_network_analysis.py          # network CLI entry point (same as complexity-network)
 ├── requirements.txt
 ├── requirements-dev.txt             # + validation-only deps (antropy, nolds, scikit-learn)
 ├── complexity_engine/
 │   ├── analysis.py                  # time-series ingestion, stats, report generation
+│   ├── cli.py                       # command-line options for both pipelines
 │   ├── domain_profiles.py           # domain profile registry + YAML/JSON loading (shared)
 │   ├── metrics.py                   # sample entropy, spectral entropy, DFA exponent, mutual information, condition comparison
 │   ├── network_analysis.py          # network ingestion, report generation
@@ -149,7 +185,7 @@ complexity-engine/
 │   ├── plots.py                     # all plot generation, both pipelines
 │   └── report_export.py             # self-contained HTML export, both pipelines
 ├── config/
-│   ├── domain_profiles.yaml         # user-facing domain definitions, both pipelines
+│   ├── domain_profiles.yaml         # user-facing domain definitions, both pipelines (packaged into installs)
 │   └── domain_profiles.json
 ├── data/
 │   ├── physio_example.csv           # synthetic sample dataset for the time-series pipeline
@@ -170,11 +206,25 @@ complexity-engine/
     └── references.bib               # curated complexity science / information theory / cognitive science bibliography
 ```
 
+## Installing
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e .                 # from a checkout; add ".[dev]" for tests and validation
+# or, without cloning:
+pip install "complexity-engine @ git+https://github.com/PJAllen5/complexity-engine.git"
+```
+
+This installs the package plus two commands, `complexity-analysis` (time series) and
+`complexity-network`, with the same options as `run_analysis.py` and
+`run_network_analysis.py`. An installed copy carries its domain profiles with it. Outside a
+checkout, `--data` is required and results go to `./outputs`.
+
 ## Running it
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt   # or: pip install -e .
 
 python run_analysis.py \
   --data data/physio_example.csv \

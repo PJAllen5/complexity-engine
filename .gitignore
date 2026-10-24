@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .venv/
 data/external/
+
+# packaging
+*.egg-info/
+build/
+dist/
