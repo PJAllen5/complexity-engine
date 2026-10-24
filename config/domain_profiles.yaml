@@ -200,3 +200,129 @@ social_network:
     small_world_sigma: Sigma compares clustering and path length against random networks with the same degrees (Humphries & Gurney, 2008); above 1 means small-world structure. It needs a fully connected network, so it is NaN for most real social networks unless the giant component is analyzed on its own.
     small_world_omega: Omega compares the network with both a random and a lattice reference (Telesford et al., 2011); near 0 means small-world, negative lattice-like, positive random-like. Like sigma, it needs a fully connected network.
 
+
+# --- Profiles for data exported by behavetrack (video and microscope tracking) ---------------
+# `behavetrack export-complexity` writes files in exactly these shapes; see that project's README.
+
+collective_behavior:
+  name: collective_behavior
+  description: Coordinated movement of animal groups (flocks, schools, swarms, crowds) or migrating cells, tracked in video, described frame by frame by how aligned, circling, fast and tightly packed the group is.
+  analysis_question: Does the group's coordination fluctuate like memoryless noise around one state, or does it show structure such as long bouts of alignment and switches between collective states, and does that differ between conditions?
+  recommended_metrics:
+    - sample_entropy
+    - spectral_entropy
+    - dfa_exponent
+  expected_columns:
+    - polarization
+    - condition
+    - session
+  signal_roles:
+    primary_signal: A group-level value per video frame from behavetrack's frames.csv. polarization (0 to 1, how aligned the headings are), rotation (0 to 1, how much the group circles its centre), mean_speed_bl_s, and nn_dist_bl or spread_bl (spacing in body lengths).
+    condition: Group or treatment being compared, such as species, group size, temperature, or before and after a disturbance.
+    covariate: session identifies each video, one recording each. n_visible is the number of tracked individuals in the frame.
+  interpretation_rules:
+    sample_entropy: Polarization and rotation are the order parameters of collective motion, near 1 when the group moves in one direction or circles a shared centre and near 0 when it swarms without order (Vicsek et al., 1995; Couzin et al., 2002). Low sample entropy means these values change in regular, repeatable ways, as in a group that holds one state or turns on a steady cycle. High sample entropy means irregular change, as when a group switches unpredictably between swarming, milling and schooling, which schooling fish do on their own (Tunstrøm et al., 2013). Tracking errors such as identity swaps and merged animals add frame-to-frame noise that raises entropy, so only compare videos tracked with the same settings.
+    spectral_entropy: Low spectral entropy means coordination rises and falls mainly at one rhythm, such as regular turns, repeated splitting and rejoining, or a periodic disturbance. High spectral entropy means fluctuation spread across many time scales. The frame rate sets the fastest rhythm that can be seen, so compare videos recorded at the same rate.
+    dfa_exponent: Near 0.5, departures from the group's typical coordination are short-lived and memoryless. Above 0.5 they persist, so an ordered or disordered bout tends to continue, as expected in groups that settle into one collective state for a while before switching (Tunstrøm et al., 2013). Flocks also show correlations that span the whole group in space (Cavagna et al., 2010), a sign of being close to a transition between order and disorder. Persistence in time is a related but separate property, so a high exponent is consistent with such organization rather than proof of it. Windows are counted in video frames, so the time scale the exponent describes depends on the frame rate.
+    mutual_information: Coupling between two group signals, such as speed and polarization. Schooling fish swarm when they move slowly and form either a milling or a polarized school as they speed up (Tunstrøm et al., 2013), so speed and polarization usually share information. Weaker coupling under a condition suggests the group's order is being set by something other than speed, such as an obstacle, a predator or a change in group size.
+
+neural_activity:
+  name: neural_activity
+  description: Activity of individual neurons in calcium (or voltage) imaging movies, as Delta F/F, the change in each neuron's fluorescence relative to its resting level, frame by frame (behavetrack neurons mode).
+  analysis_question: Is each neuron's activity irregular and memoryless, or structured over long time scales, as when neurons take part in recurrent network activity, and does a condition such as a drug, developmental stage or stimulation change that?
+  recommended_metrics:
+    - sample_entropy
+    - spectral_entropy
+    - dfa_exponent
+  metric_parameters:
+    # Windows are in frames. 16 frames stays above the decay of a calcium transient at
+    # typical imaging rates (about 0.5 to 1.5 s at 10 to 30 frames per second); raise it
+    # for faster imaging or slower indicators.
+    dfa_exponent:
+      min_scale: 16
+  expected_columns:
+    - dff
+    - condition
+    - session
+    - neuron_id
+  signal_roles:
+    primary_signal: Delta F/F of one neuron per frame (behavetrack's traces_dff.csv, reshaped to one row per neuron per frame).
+    condition: Treatment or state being compared, such as control and drug, or days in culture.
+    covariate: session (the movie) and neuron_id together identify one recording. Run with --unit-cols session,neuron_id so metrics are computed per neuron, then averaged per condition.
+  interpretation_rules:
+    sample_entropy: Delta F/F is a slowed, smoothed view of spiking, since each spike produces a calcium transient that rises quickly and decays over a fraction of a second to a few seconds, depending on the indicator (Chen et al., 2013). That smoothing makes neighbouring frames alike and lowers sample entropy, so only compare recordings made with the same indicator and frame rate. Within such a comparison, lower entropy means more stereotyped activity, such as regular firing or firing locked to network bursts, and higher entropy means more irregular, independent firing.
+    spectral_entropy: Low spectral entropy means activity is concentrated at one rhythm, such as periodic network bursts, which are common in cultured networks. High spectral entropy means activity spread across time scales. Indicator kinetics filter out fast rhythms (Chen et al., 2013), so the spectrum describes slow structure only.
+    dfa_exponent: Near 0.5 means fluctuations are uncorrelated beyond the indicator's own time scale. Above 0.5 means long-range temporal correlations, which have been found in the amplitude of human brain oscillations (Linkenkaer-Hansen et al., 2001) and are often linked with networks working near criticality, where activity spreads in cascades of all sizes (Beggs & Plenz, 2003). Slow drift or bleaching that Delta F/F did not remove also raises the exponent, so check traces for slow trends before reading a high value as network structure.
+    mutual_information: Computed only when more than one signal is analyzed, for example a neuron's Delta F/F together with a population signal such as the fraction of neurons firing. High coupling means a neuron's activity is largely explained by population events, low coupling that it fires more on its own.
+
+animal_social_network:
+  name: animal_social_network
+  description: Networks of which tracked individuals come close to which (animals, people or cells in one video), from behavetrack's interactions.csv. Each tie joins two individuals that came within the contact distance, weighted by their total time in contact.
+  analysis_question: Are contacts spread evenly through the group, or concentrated in subgroups and a few central individuals, and does that structure change between conditions?
+  recommended_metrics:
+    - n_nodes
+    - n_edges
+    - mean_degree
+    - density
+    - avg_clustering
+    - transitivity
+    - modularity
+    - avg_shortest_path_length
+    - n_connected_components
+  expected_columns:
+    - source
+    - target
+    - weight
+  signal_roles:
+    source: Track ID of one individual in a contact.
+    target: Track ID of the other individual.
+    weight: Total seconds the pair spent within the contact distance; used for clustering and modularity, not for path length.
+    condition: Optional label for comparing groups or treatments, such as two arenas or before and after a change.
+  interpretation_rules:
+    n_nodes: Number of tracked individuals with at least one contact. Video tracking gives an individual a new ID each time it is lost and found again, so n_nodes can exceed the number of animals, and one animal's contacts can be split across several nodes. Compare n_nodes with the tracker's typical count before reading individual-level results.
+    n_edges: Number of pairs that came into contact at least once. Repeated contacts collapse into one tie, whose weight is their total contact time.
+    mean_degree: Average number of different partners per individual. In a confined arena partners accumulate with time, so compare recordings of similar length.
+    density: Share of all possible pairs that met. Proximity networks fill in quickly in small arenas and long recordings, where nearly everyone meets everyone, so low density in such a setting points to avoidance or stable subgroups.
+    avg_clustering: How often two partners of the same individual are also partners of each other. Animal groups often show clustered association (Krause et al., 2007; Wey et al., 2008), but crowding alone also produces clustering in proximity networks, so compare against randomized networks before reading it as social preference (Farine & Whitehead, 2015).
+    transitivity: Network-wide share of connected triples that close into triangles. When it is well below average clustering, low-degree individuals sit in tight groups while a few high-degree individuals span groups that otherwise don't meet.
+    modularity: How cleanly the group divides into subgroups with more contact inside than between. Wild animal societies can have distinct communities joined by a few individuals who act as brokers between them, as in a population of bottlenose dolphins (Lusseau & Newman, 2004). In a single arena, high modularity can also come from animals sorting by position or from a short recording, so test it against permuted networks (Farine & Whitehead, 2015).
+    avg_shortest_path_length: Average number of contact steps between two individuals in the largest connected group, which bears on how quickly information or infection could pass through it (Krause et al., 2007).
+    n_connected_components: More than one component means some individuals never contacted the rest. With video tracking this is often an identity fragment that was seen only briefly.
+    small_world_sigma: Sigma compares clustering and path length against random networks with the same degrees (Humphries & Gurney, 2008); above 1 means small-world structure. It needs a fully connected network, so drop brief identity fragments first.
+    small_world_omega: Omega compares the network with both a random and a lattice reference (Telesford et al., 2011); near 0 means small-world, negative lattice-like, positive random-like.
+
+neuronal_network:
+  name: neuronal_network
+  description: Functional networks of imaged neurons, from behavetrack's correlations.csv. Each tie joins two neurons whose Delta F/F activity is correlated above a threshold, weighted by the correlation.
+  analysis_question: Is coordinated activity spread across the whole population or organized into modules and hub neurons, and does the organization change with development or treatment?
+  recommended_metrics:
+    - n_nodes
+    - n_edges
+    - mean_degree
+    - density
+    - avg_clustering
+    - transitivity
+    - modularity
+    - avg_shortest_path_length
+    - n_connected_components
+  expected_columns:
+    - source
+    - target
+    - weight
+  signal_roles:
+    source: ID of one neuron.
+    target: ID of the other neuron.
+    weight: Correlation between the two neurons' Delta F/F traces (only pairs above the export threshold are included).
+    condition: Optional label for comparing recordings, such as control and drug, or days in culture.
+  interpretation_rules:
+    n_nodes: Number of neurons with at least one correlation above the threshold. Neurons that never fire, or fire independently, drop out of the network entirely.
+    n_edges: Number of neuron pairs correlated above the threshold. The threshold is a choice, and almost every network measure changes with it.
+    mean_degree: Average number of neurons each neuron is correlated with. Because degree, clustering and path length all depend on how many ties there are, compare networks at the same density or the same mean degree rather than the same threshold (van Wijk et al., 2010).
+    density: Share of all neuron pairs that are correlated above the threshold. Population-wide network bursts make nearly every pair correlated, which pushes density toward 1 and hides finer structure, so compare recordings with similar burst rates or analyze activity outside bursts.
+    avg_clustering: How often two neurons correlated with the same neuron are also correlated with each other. High clustering with short paths is the small-world pattern found across many brain networks (Bullmore & Sporns, 2009; Watts & Strogatz, 1998). Correlation is not connection, since shared input makes two neurons correlate without a synapse between them (Rubinov & Sporns, 2010).
+    transitivity: Network-wide share of connected triples that close into triangles, read alongside average clustering. Correlation networks are inherently rich in triangles, because if A tracks B and B tracks C, A tends to track C.
+    modularity: How cleanly the population divides into groups of neurons that are active together more than with the rest. Modules suggest separate assemblies or regions of the dish, and their boundaries are worth checking against neuron positions (distance_um in correlations.csv).
+    avg_shortest_path_length: Average number of correlation steps between two neurons in the largest connected group. Short paths mean activity in one part of the network is closely tied to the rest.
+    n_connected_components: Separate groups of neurons whose activity is unrelated to the others at this threshold.
+    small_world_sigma: Sigma compares clustering and path length against random networks with the same degrees (Humphries & Gurney, 2008); above 1 means small-world structure, as reported for many brain networks (Bullmore & Sporns, 2009). It needs a fully connected network.
+    small_world_omega: Omega compares the network with both a random and a lattice reference (Telesford et al., 2011); near 0 means small-world, negative lattice-like, positive random-like. Hub neurons that coordinate synchrony, found in the developing hippocampus (Bonifazi et al., 2009), are best found per neuron with --compute-centrality rather than from these network-wide summaries.
