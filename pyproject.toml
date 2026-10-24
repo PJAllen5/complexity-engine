@@ -7,6 +7,8 @@ name = "complexity-engine"
 version = "0.1.0"
 description = "Domain-aware complexity and network analysis of scientific time series and graphs, grounded in a literature base."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "numpy",

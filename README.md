@@ -160,11 +160,16 @@ networks fill in with crowding and recording length, so compare against permuted
 calcium indicators smooth spiking, which lowers entropy and sets the shortest meaningful DFA
 window; and correlation networks depend on the threshold, so compare them at equal density.
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
 ## Repository structure
 
 ```text
 complexity-engine/
 ├── README.md
+├── LICENSE                          # MIT
 ├── pyproject.toml                   # makes it installable: pip install -e .
 ├── run_analysis.py                  # time-series CLI entry point (same as complexity-analysis)
 ├── run_network_analysis.py          # network CLI entry point (same as complexity-network)
