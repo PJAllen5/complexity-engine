@@ -1,0 +1,42 @@
+# Runs the full test suite on every pull request and every push to main,
+# including the known-answer checks on real data (Fantasia heart rate, GHCN
+# temperature, karate club and ca-GrQc networks).
+# A red X on a PR means a test failed: open "Details" to see which one.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:   # lets you re-run it by hand from the Actions tab
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      # The real datasets aren't committed (licensing), so download them once
+      # (~18 MB) and keep them in the Actions cache. A new download happens only
+      # when a fetch script changes.
+      - name: Restore real-data cache
+        uses: actions/cache@v4
+        with:
+          path: data/external
+          key: real-data-${{ hashFiles('data/fetch_*.py') }}
+      - name: Fetch real data (if not cached)
+        run: |
+          [ -f data/external/fantasia_rr.csv ]        || python data/fetch_fantasia.py
+          [ -f data/external/ghcn_tmax_anomaly.csv ]  || python data/fetch_ghcn_temperature.py
+          [ -f data/external/ca_grqc_edges.csv ]      || python data/fetch_social_networks.py
+
+      # -rs lists every skipped test and why, so a missing dataset is visible.
+      - name: Run tests
+        run: python -m pytest -q -rs
