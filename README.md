@@ -115,7 +115,14 @@ parallel pipeline:
 1. **Ingest** one or more CSV/Excel edge-list files (`source`, `target` columns, an optional
    `weight` column, and an optional `condition` column to compare multiple networks — e.g.
    `rest` vs `task`). Multiple files are merged if they share the same columns. Undirected by
-   default; pass `--directed` to treat edges as directed.
+   default; pass `--directed` to treat edges as directed. An optional node table
+   (`--nodes nodes.csv`, with the id column set by `--node-col`, default `node`) lists nodes
+   and their attributes. Listed nodes with no ties are added as isolates, so they count
+   toward `n_nodes`, `density` and `mean_degree`. Attributes are joined onto
+   `node_communities.csv` and `node_centrality.csv`. Edge endpoints missing from the table are kept,
+   without attributes. A `condition` column in the table gives each condition its own nodes;
+   without one, the table applies to every condition. The report's "Nodes" section counts
+   each case. A node listed twice is an error.
 2. **Clean**: drops rows missing a required value (source/target, and condition when used),
    and detects — but does not automatically remove — exact duplicate rows, mirroring the
    time-series pipeline's approach. Every input/dropped/output row count is recorded in a

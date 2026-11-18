@@ -93,6 +93,8 @@ def network_main(argv: Sequence[str] | None = None) -> None:
         "Only well-defined for an undirected, fully connected network with >= 4 nodes; NaN otherwise.",
     )
     parser.add_argument("--compute-communities", action="store_true", help="Also write each node's detected community (the partition modularity scores) to node_communities.csv.")
+    parser.add_argument("--nodes", type=str, default=None, help="Optional node table (CSV/Excel): one row per node, with an id column and attribute columns. Listed nodes with no ties are added as isolates, and attributes are joined onto per-node outputs. An optional condition column gives per-condition nodes.")
+    parser.add_argument("--node-col", type=str, default="node", help="Node id column in the --nodes table.")
     parser.add_argument("--random-seed", type=int, default=42, help="Seed for the randomized reference graphs used by --compute-small-world.")
     parser.add_argument("--domain", type=str, default="network", help="Domain profile to apply.")
     parser.add_argument("--domain-config", type=str, default=None, help="Optional path to a YAML or JSON config file containing custom domain profiles.")
@@ -122,6 +124,8 @@ def network_main(argv: Sequence[str] | None = None) -> None:
         output_dir=args.output_dir,
         domain=args.domain,
         domain_config=args.domain_config,
+        node_table=args.nodes,
+        node_col=args.node_col,
     )
 
     if result["missing_columns"]:
@@ -131,6 +135,9 @@ def network_main(argv: Sequence[str] | None = None) -> None:
         print(f"Warning: dropped {provenance['rows_dropped_missing_values']} row(s) missing a required value.")
     if provenance["duplicate_rows_detected"]:
         print(f"Warning: detected {provenance['duplicate_rows_detected']} exact duplicate row(s) (not removed automatically; see report.md).")
+    stats = result["node_table_summary"]
+    if not stats.empty and stats["isolates_added"].sum():
+        print(f"Added {int(stats['isolates_added'].sum())} node(s) from the node table with no ties, as isolates.")
     print(f"Saved network metrics to: {result['metrics_csv']}")
     if result["centrality_csv"]:
         print(f"Saved node centrality to: {result['centrality_csv']}")

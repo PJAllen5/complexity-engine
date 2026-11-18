@@ -22,7 +22,6 @@ from pathlib import Path
 
 import networkx as nx
 import numpy as np
-import pandas as pd
 import pytest
 
 from complexity_engine.network_analysis import analyze_network
@@ -38,9 +37,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _run(path, tmp_path_factory, name):
+def _run(path, tmp_path_factory, name, node_table=None):
     return analyze_network(
         path,
+        node_table=node_table,
         condition_col=None,
         weight_col=None,
         domain="social_network",
@@ -51,7 +51,7 @@ def _run(path, tmp_path_factory, name):
 
 @pytest.fixture(scope="module")
 def karate(tmp_path_factory):
-    return _run(KARATE_EDGES, tmp_path_factory, "karate")
+    return _run(KARATE_EDGES, tmp_path_factory, "karate", node_table=KARATE_FACTIONS)
 
 
 @pytest.fixture(scope="module")
@@ -61,9 +61,16 @@ def grqc(tmp_path_factory):
 
 def _misassigned_members(karate):
     """Members whose faction differs from the majority faction of their detected community."""
-    members = karate["node_communities"].merge(pd.read_csv(KARATE_FACTIONS), on="node")
+    members = karate["node_communities"]
     majority = members.groupby("community")["faction"].agg(lambda factions: factions.mode()[0])
     return sorted(members.loc[members["faction"] != members["community"].map(majority), "node"])
+
+
+def test_karate_club_factions_come_in_through_the_node_table(karate):
+    summary = karate["node_table_summary"].iloc[0]
+    assert (summary["n_table_nodes"], summary["isolates_added"], summary["nodes_not_in_table"]) == (34, 0, 0)
+    assert karate["node_communities"]["faction"].value_counts().to_dict() == {"Mr. Hi": 17, "Officer": 17}
+    assert karate["graphs"]["all"].nodes[1]["faction"] == "Mr. Hi"
 
 
 def test_karate_club_modularity_is_near_04(karate):
