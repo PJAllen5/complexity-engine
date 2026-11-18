@@ -348,6 +348,13 @@ elderly. It does not reproduce the published drop in the long-range DFA exponent
 turned out to depend on the window it's fitted over. See
 [docs/validation/fantasia.md](docs/validation/fantasia.md) for the full results.
 
+`tests/test_wesad_validation.py` checks the `stress` profile on WESAD's chest recordings (baseline vs
+the Trier Social Stress Test, 15 subjects). WESAD is for academic, non-commercial use and must be
+downloaded by hand (see `data/fetch_wesad.py`), so CI skips it. Heart rate rises from 73 to 99 bpm in
+all 15 subjects (p < 0.001). Skin conductance rises in 13 of 15, but the engine's unpaired test gives
+p = 0.14, because resting skin conductance varies so much between people. See
+[docs/validation/wesad.md](docs/validation/wesad.md).
+
 `tests/test_gait_validation.py` checks the `gait` profile on PhysioNet stride intervals against
 Hausdorff et al. (1997):
 
