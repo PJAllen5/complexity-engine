@@ -83,6 +83,8 @@ _UNDEFINED_METRIC_REASONS = {
     "dfa_exponent": "needs at least 16 samples and non-zero fluctuation at every scale",
     "dfa_short_term": "needs at least 64 samples and non-zero fluctuation at every scale",
     "dfa_long_term": "needs at least 256 samples and non-zero fluctuation at every scale",
+    "dominant_period": "needs at least 4 samples and a non-constant signal",
+    "dominant_power_share": "needs at least 4 samples and a non-constant signal",
 }
 
 _METADATA_COLUMNS = {
@@ -842,7 +844,11 @@ def _surrogate_lines(unit_complexity: pd.DataFrame, metrics: Sequence[str], surr
     return [*lines, ""]
 
 
-def _undefined_metric_lines(unit_complexity: pd.DataFrame, metrics: Sequence[str]) -> list[str]:
+def _undefined_metric_lines(
+    unit_complexity: pd.DataFrame,
+    metrics: Sequence[str],
+    metric_parameters: Mapping[str, Mapping[str, Any]] | None = None,
+) -> list[str]:
     """Explain every metric that was undefined (NaN) for some recordings, so a blank or
     missing value is never mistaken for a real result."""
     lines = []
@@ -864,7 +870,17 @@ def _undefined_metric_lines(unit_complexity: pd.DataFrame, metrics: Sequence[str
     for metric in metrics:
         if metric not in unit_complexity.columns:
             continue
+        min_samples = (metric_parameters or {}).get(metric, {}).get("min_samples")
         for signal, rows in unit_complexity.groupby("signal", sort=True):
+            if min_samples is not None:
+                short = rows[rows["n_samples"] < min_samples]
+                if not short.empty:
+                    lines.append(
+                        f"- {metric} is not computed for {len(short)} of {rows.shape[0]} recording(s) of {signal} "
+                        f"shorter than the profile's min_samples ({min_samples}; shortest has "
+                        f"{int(short['n_samples'].min())})."
+                    )
+                rows = rows[rows["n_samples"] >= min_samples]
             n_undefined = int(rows[metric].isna().sum())
             if not n_undefined:
                 continue
@@ -1185,7 +1201,9 @@ def analyze_dataset(
     report_lines.append("")
     report_lines.extend(_as_code_block(complexity.to_string(index=False)))
     report_lines.extend(
-        _undefined_metric_lines(unit_complexity, domain_profile.recommended_metrics or list(DEFAULT_METRICS))
+        _undefined_metric_lines(
+            unit_complexity, domain_profile.recommended_metrics or list(DEFAULT_METRICS), domain_profile.metric_parameters
+        )
     )
     report_lines.extend(
         _surrogate_lines(

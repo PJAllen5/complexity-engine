@@ -40,7 +40,16 @@ def _as_segments(signal) -> list[np.ndarray]:
     return [np.asarray(signal, dtype=float)]
 
 
-def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
+def _shorter_than(signal, min_samples: int | None) -> bool:
+    """True when min_samples is set and the recording (all segments together) is shorter."""
+    if min_samples is None:
+        return False
+    if isinstance(min_samples, bool) or not isinstance(min_samples, (int, np.integer)) or min_samples < 1:
+        raise ValueError(f"min_samples must be a positive whole number of samples, got {min_samples!r}.")
+    return sum(segment.size for segment in _as_segments(signal)) < min_samples
+
+
+def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2, min_samples: int | None = None) -> float:
     """Compute sample entropy for a one-dimensional time series.
 
     Returns NaN when sample entropy is undefined: the series is too short to form
@@ -50,7 +59,13 @@ def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
 
     Given Segments, templates are formed within each segment (none spans a gap) and
     compared across all of them, with r scaled by the SD of all values together.
+
+    min_samples (off by default) makes recordings shorter than it NaN. Sample entropy is
+    biased and unstable for short series; 10^m to 20^m samples are commonly recommended
+    (Richman & Moorman, 2000), e.g. 100 for m = 2.
     """
+    if _shorter_than(signal, min_samples):
+        return np.nan
     segments = _as_segments(signal)
     data = np.concatenate(segments)
     if max(segment.size for segment in segments) < 2 * m + 1:
@@ -88,7 +103,7 @@ def sample_entropy(signal: np.ndarray, m: int = 2, r: float = 0.2) -> float:
 _MIN_SPECTRAL_SEGMENT = 16
 
 
-def spectral_entropy(signal: np.ndarray) -> float:
+def spectral_entropy(signal: np.ndarray, min_samples: int | None = None) -> float:
     """Compute normalized spectral entropy from the FFT power spectrum.
 
     Uses squared FFT magnitude (power), not raw magnitude -- spectral entropy is
@@ -104,7 +119,10 @@ def spectral_entropy(signal: np.ndarray) -> float:
 
     Given Segments, the result is the length-weighted mean over segments of at least
     _MIN_SPECTRAL_SEGMENT samples (a single segment is used whatever its length).
+    min_samples (off by default) makes recordings shorter than it NaN.
     """
+    if _shorter_than(signal, min_samples):
+        return np.nan
     if isinstance(signal, Segments):
         segments = _as_segments(signal)
         if len(segments) == 1:
@@ -171,7 +189,9 @@ def _detrended_fluctuation(profiles: Sequence[np.ndarray], scale: int, order: in
     return float(np.sqrt(total / count))
 
 
-def dfa_exponent(signal: np.ndarray, min_scale: int = 8, max_scale: int | None = None, order: int = 1) -> float:
+def dfa_exponent(
+    signal: np.ndarray, min_scale: int = 8, max_scale: int | None = None, order: int = 1, min_samples: int | None = None
+) -> float:
     """Approximate the detrended fluctuation analysis exponent.
 
     Fits the log-log slope of fluctuation against window size over 8 log-spaced window
@@ -190,6 +210,8 @@ def dfa_exponent(signal: np.ndarray, min_scale: int = 8, max_scale: int | None =
     Returns NaN for fewer than 16 samples or when fluctuation is zero at some scale
     (e.g. a constant or perfectly linear signal), where the log-log slope is undefined.
     """
+    if _shorter_than(signal, min_samples):
+        return np.nan
     if int(order) != order or order < 1:
         raise ValueError(f"DFA order must be a positive integer, got {order!r}.")
     segments = _as_segments(signal)
@@ -317,6 +339,48 @@ def mutual_information(x: np.ndarray, y: np.ndarray, bins: int = 8) -> float:
     return float(np.sum(joint_prob[mask] * np.log2(joint_prob[mask] / outer[mask])))
 
 
+def _dominant_peak(signal, detrend: str = "mean", min_samples: int | None = None) -> tuple[float, float]:
+    """(period in samples, share of power) of the strongest spectral peak; see dominant_period."""
+    if detrend not in ("mean", "linear"):
+        raise ValueError(f"detrend must be 'mean' or 'linear', got {detrend!r}.")
+    if _shorter_than(signal, min_samples):
+        return np.nan, np.nan
+    segments = _as_segments(signal)
+    data = max(segments, key=len) if segments else np.array([], dtype=float)
+    data = np.asarray(data, dtype=float)
+    if data.size < 4:
+        return np.nan, np.nan
+    t = np.arange(data.size)
+    trend = np.polyval(np.polyfit(t, data, 1), t) if detrend == "linear" else np.mean(data)
+    power = np.abs(np.fft.rfft(data - trend)) ** 2
+    # Index k is k cycles per series; k >= 2 keeps periods of at most half the series, so a
+    # "cycle" repeats at least twice. Index 0 (the mean) is never a period.
+    candidates = power[2:]
+    total = power[1:].sum()
+    if candidates.size == 0 or total == 0:
+        return np.nan, np.nan
+    k = int(np.argmax(candidates)) + 2
+    return float(data.size / k), float(power[k] / total)
+
+
+def dominant_period(signal: np.ndarray, detrend: str = "mean", min_samples: int | None = None) -> float:
+    """Period, in samples, of the strongest peak in the periodogram.
+
+    Only periods up to half the series length count, so the cycle repeats at least twice. The
+    resolution is coarse for short series: periods are n/k for whole k (e.g. 114/11 = 10.4 and
+    114/12 = 9.5 years for a 114-year series). detrend="linear" removes a straight-line trend
+    first, which would otherwise put power at the longest periods. Given Segments, the longest
+    segment is used. NaN for fewer than 4 samples or no power.
+    """
+    return _dominant_peak(signal, detrend, min_samples)[0]
+
+
+def dominant_power_share(signal: np.ndarray, detrend: str = "mean", min_samples: int | None = None) -> float:
+    """Share of the signal's power (mean removed) at the dominant_period's frequency: near 1 for
+    a pure oscillation, near 2/n for white noise."""
+    return _dominant_peak(signal, detrend, min_samples)[1]
+
+
 # Each metric is a function and the keyword arguments it's called with. A domain profile's
 # metric_parameters override those arguments (e.g. a DFA scale range suited to its sampling
 # interval) without the profile's domain knowledge having to live in Python.
@@ -330,6 +394,8 @@ _METRIC_FUNCTIONS = {
     # metric_parameters, or set a range on dfa_exponent itself.
     "dfa_short_term": (dfa_exponent, {"min_scale": 4, "max_scale": 16}),
     "dfa_long_term": (dfa_exponent, {"min_scale": 16, "max_scale": 64}),
+    "dominant_period": (dominant_period, {}),
+    "dominant_power_share": (dominant_power_share, {}),
 }
 
 

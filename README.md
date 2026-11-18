@@ -28,7 +28,9 @@ built on that foundation.
 4. **Compute complexity metrics** per condition — sample entropy, spectral entropy, and a DFA
    (detrended fluctuation analysis) scaling exponent, plus opt-in short-range (4–16 samples)
    and long-range (16–64 samples) DFA exponents (`dfa_short_term`, `dfa_long_term`) for
-   signals whose correlation structure changes with scale — restricted to whichever metrics
+   signals whose correlation structure changes with scale, and opt-in `dominant_period` (the
+   period, in samples, of the strongest spectral peak, at most half the series) with
+   `dominant_power_share` (that peak's share of the power) for rhythmic signals — restricted to whichever metrics
    the active domain profile recommends. These metrics depend on sample order, so they're computed
    separately within each independent recording (subject, trial, session — auto-detected from
    `subject_id`/`subject`/`participant`/`session`/`trial`, or set with `--unit-cols`), sorted by
@@ -85,6 +87,13 @@ metric_parameters:
 
 Unknown metrics or parameter names are rejected at load time, and the settings used are
 printed in the report.
+
+Every metric also takes `min_samples` (off by default): recordings shorter than it get NaN for
+that metric, and the report says how many and why, instead of quoting an unreliable value from a
+short series. Sample entropy, for example, is usually given at least 10^m to 20^m samples
+(Richman & Moorman, 2000), so `sample_entropy: {min_samples: 100}` for the default m = 2.
+`dominant_period` and `dominant_power_share` also take `detrend: linear`, which removes a
+trend that would otherwise put power at the longest periods.
 
 With `axis: time`, a scale may be a duration instead (`30D`, `12h`, `15min`, `2W`, `10s`).
 Each recording converts it to samples at its own sampling interval, and the report prints
