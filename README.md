@@ -133,6 +133,13 @@ parallel pipeline:
    without attributes. A `condition` column in the table gives each condition its own nodes;
    without one, the table applies to every condition. The report's "Nodes" section counts
    each case. A node listed twice is an error.
+   With a node table, `--attributes leaning,age` (or a profile's `node_attributes`) measures
+   attribute mixing (homophily) per condition into `attribute_mixing.csv`. It reports Newman's
+   assortativity, the share of ties within a group against the share random mixing would give,
+   a permutation p-value (`--permutations`, default 1,000), and the agreement between the
+   attribute and the detected communities (NMI). Numeric columns with more than two values
+   are compared as numbers; anything else, including 0/1 codes, as groups, unless the profile
+   sets `kind`.
 2. **Clean**: drops rows missing a required value (source/target, and condition when used),
    and detects — but does not automatically remove — exact duplicate rows, mirroring the
    time-series pipeline's approach. Every input/dropped/output row count is recorded in a
@@ -355,6 +362,11 @@ small world as Newman (2001) found for collaboration networks. On the karate clu
 matches (0.381), but the detected communities misassign 2 members against the known factions,
 one more than the published methods. See
 [docs/validation/social_networks.md](docs/validation/social_networks.md).
+
+Attribute mixing is checked on the political blogs network (same fetch script as below):
+91.15% of links stay on the linking blog's own side, against 91% published by Adamic & Glance
+(2005), with assortativity 0.82 (p = 0.001). See
+[docs/validation/attribute_mixing.md](docs/validation/attribute_mixing.md).
 
 `tests/test_reference_network_validation.py` checks the `neuronal_network` and `network`
 profiles on the two small-world networks of Watts & Strogatz (1998), the *C. elegans* neural

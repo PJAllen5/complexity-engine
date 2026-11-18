@@ -153,6 +153,12 @@ counted. If the table and the edges name the same nodes with different types (7 
 that is an error. Otherwise every node would quietly become an isolate. The profile's
 `node_attributes` (item 3) moves to PR 5, the first PR that uses it.
 
+*Implemented in PR 5:* `attribute_mixing.csv`, `--attributes` and `--permutations`, and profile
+`node_attributes` (a role string, or `{role, kind}`). Kind inference differs from item 2: a numeric
+column with only two distinct values is treated as groups, so 0/1 codes like polblogs' leaning
+don't need a profile override. Self-loops are excluded from mixing. polblogs reproduces Adamic &
+Glance's 91% (0.9115); see [attribute_mixing.md](../validation/attribute_mixing.md).
+
 **2. Attribute mixing table** (`attribute_mixing.csv`). For each attribute named in the
 profile's `node_attributes` (or `--attributes`), per condition:
 

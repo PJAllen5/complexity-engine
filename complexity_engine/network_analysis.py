@@ -24,7 +24,9 @@ from .domain_profiles import (
     validate_recommended_metrics,
 )
 from .network_metrics import (
+    ATTRIBUTE_MIXING_COLUMNS,
     NETWORK_METRIC_KEYS,
+    attribute_mixing,
     build_graph,
     compute_network_metrics,
     compute_node_centrality,
@@ -165,6 +167,40 @@ def _node_table_lines(
     return [*lines, ""]
 
 
+def _attribute_kind(values: pd.Series, declared: str = "") -> str:
+    """The profile's declared kind, else numeric for a numeric column with more than two
+    distinct values, else categorical (so 0/1 codes and booleans count as groups)."""
+    if declared:
+        return declared
+    if pd.api.types.is_bool_dtype(values) or not pd.api.types.is_numeric_dtype(values):
+        return "categorical"
+    return "numeric" if values.dropna().nunique() > 2 else "categorical"
+
+
+def _attribute_mixing_lines(mixing: pd.DataFrame, domain_profile: DomainProfile, permutations: int, path: Path) -> list[str]:
+    lines = [
+        "## Attribute mixing",
+        "How ties mix across node attributes, over nodes with a value and ties between two of them "
+        "(self-loops excluded). assortativity is Newman's (2003) coefficient: 1 when every tie stays "
+        "within a group, 0 for random mixing, negative when ties prefer other groups. same_group_tie_fraction "
+        "is the share of ties within a group, and expected_same_group_fraction what random mixing with the "
+        "same group sizes and degrees would give (McPherson et al., 2001). p_value is a two-sided "
+        f"permutation test of assortativity ({permutations} shuffles of the attribute across nodes), and "
+        "community_nmi the agreement between the attribute and the detected communities (Danon et al., 2005). "
+        f"Values are in {path.name}.",
+        "",
+    ]
+    for attribute, spec in domain_profile.node_attributes.items():
+        if spec.get("role"):
+            lines.append(f"- {attribute}: {spec['role']}")
+    for metric in ("assortativity", "same_group_tie_fraction", "community_nmi"):
+        if domain_profile.interpretation_rules.get(metric):
+            lines.append(f"- {metric}: {domain_profile.interpretation_rules[metric]}")
+    lines.append("")
+    lines.extend(_as_code_block(mixing.to_string(index=False)))
+    return lines
+
+
 def _missing_expected_columns(df: pd.DataFrame, domain_profile: DomainProfile) -> list[str]:
     return [col for col in domain_profile.expected_columns if col not in df.columns]
 
@@ -236,6 +272,8 @@ def analyze_network(
     domain_config: str | Path | None = None,
     node_table: str | Path | Sequence[str | Path] | None = None,
     node_col: str = "node",
+    attributes: Sequence[str] | None = None,
+    permutations: int = 1000,
 ) -> dict[str, pd.DataFrame | dict | str]:
     load_domain_profiles(domain_config)
     domain_profile = get_domain_profile(domain)
@@ -265,6 +303,21 @@ def analyze_network(
         nodes_df = load_node_table(node_table, node_col=node_col, condition_col=condition_col if has_condition else None)
         node_stats, unmatched_node_rows = attach_node_table(graphs, nodes_df, condition_col if has_condition else None)
     node_condition_col = condition_col if has_condition else None
+    mixing_attributes = list(attributes) if attributes is not None else list(domain_profile.node_attributes)
+    if mixing_attributes and nodes_df is None:
+        raise ValueError(
+            f"Attribute mixing for {', '.join(mixing_attributes)} needs a node table (--nodes / node_table=) "
+            "giving each node's attributes."
+        )
+    if nodes_df is not None:
+        missing = [a for a in mixing_attributes if a not in nodes_df.columns]
+        if missing:
+            raise ValueError(
+                f"Node table has no column(s) {', '.join(missing)} for attribute mixing; "
+                f"its columns are {', '.join(map(str, nodes_df.columns))}."
+            )
+    if permutations < 1:
+        raise ValueError(f"permutations must be at least 1, got {permutations}.")
     metrics_df = pd.DataFrame.from_records(
         [
             {
@@ -306,6 +359,26 @@ def analyze_network(
         communities_df = _with_node_attributes(communities_df, nodes_df, node_condition_col)
         communities_path = output_dir / "node_communities.csv"
         communities_df.to_csv(communities_path, index=False)
+
+    mixing_df = pd.DataFrame(columns=["condition", *ATTRIBUTE_MIXING_COLUMNS])
+    mixing_path = None
+    if mixing_attributes:
+        mixing_df = pd.DataFrame.from_records([
+            {
+                "condition": condition,
+                **attribute_mixing(
+                    graph, attribute,
+                    kind=_attribute_kind(
+                        nodes_df[attribute], domain_profile.node_attributes.get(attribute, {}).get("kind", "")
+                    ),
+                    permutations=permutations, seed=random_seed,
+                ),
+            }
+            for condition, graph in graphs.items()
+            for attribute in mixing_attributes
+        ])
+        mixing_path = output_dir / "attribute_mixing.csv"
+        mixing_df.to_csv(mixing_path, index=False)
 
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -381,6 +454,8 @@ def analyze_network(
             shown = ", ".join(str(size) for size in sizes[:10]) + (", ..." if len(sizes) > 10 else "")
             report_lines.append(f"- {condition}: {len(sizes)} communities, sizes {shown}")
         report_lines.append("")
+    if mixing_path is not None:
+        report_lines.extend(_attribute_mixing_lines(mixing_df, domain_profile, permutations, mixing_path))
     if degree_plot_path:
         report_lines.extend(["## Visualizations", f"![degree_distribution](plots/{Path(degree_plot_path).name})", ""])
     report_lines.extend(_generate_network_interpretation_lines(metrics_df, domain_profile))
@@ -399,6 +474,8 @@ def analyze_network(
         "node_communities": communities_df,
         "node_table": nodes_df if nodes_df is not None else pd.DataFrame(),
         "node_table_summary": node_stats,
+        "attribute_mixing": mixing_df,
+        "attribute_mixing_csv": str(mixing_path) if mixing_path else None,
         "metrics_csv": str(metrics_path),
         "centrality_csv": str(centrality_path) if centrality_path else None,
         "communities_csv": str(communities_path) if communities_path else None,

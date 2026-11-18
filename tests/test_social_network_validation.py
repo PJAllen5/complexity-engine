@@ -41,6 +41,7 @@ def _run(path, tmp_path_factory, name, node_table=None):
     return analyze_network(
         path,
         node_table=node_table,
+        attributes=["faction"] if node_table is not None else None,
         condition_col=None,
         weight_col=None,
         domain="social_network",
@@ -71,6 +72,14 @@ def test_karate_club_factions_come_in_through_the_node_table(karate):
     assert (summary["n_table_nodes"], summary["isolates_added"], summary["nodes_not_in_table"]) == (34, 0, 0)
     assert karate["node_communities"]["faction"].value_counts().to_dict() == {"Mr. Hi": 17, "Officer": 17}
     assert karate["graphs"]["all"].nodes[1]["faction"] == "Mr. Hi"
+
+
+def test_karate_club_communities_follow_the_factions(karate):
+    # Consistency check (no published value): ties stay within a faction far more than chance,
+    # and the detected communities share information with the factions.
+    mixing = karate["attribute_mixing"].iloc[0]
+    assert mixing["assortativity"] > 0.5 and mixing["p_value"] < 0.05
+    assert mixing["community_nmi"] > 0.4
 
 
 def test_karate_club_modularity_is_near_04(karate):
