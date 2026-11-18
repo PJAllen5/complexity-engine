@@ -12,6 +12,7 @@ import pandas as pd
 
 from .domain_profiles import (
     DomainProfile,
+    parse_duration,
     get_domain_profile,
     load_domain_profiles,
     validate_metric_parameters,
@@ -153,13 +154,24 @@ def _describe_data_source(data_path: str | Path | Sequence[str | Path]) -> str:
     return ", ".join(Path(p).name for p in data_path)
 
 
-def _metric_settings_lines(domain_profile: DomainProfile) -> list[str]:
+def _metric_settings_lines(domain_profile: DomainProfile, intervals: Sequence[float] = ()) -> list[str]:
     """Report the settings of every metric the profile configures, so the numbers can be
-    read and reproduced without opening the profile."""
+    read and reproduced without opening the profile. A duration is followed by the number of
+    samples it became at each sampling interval in the data (seconds in `intervals`)."""
     lines = []
     for metric, parameters in domain_profile.metric_parameters.items():
-        settings = ", ".join(f"{name}={value}" for name, value in metric_settings(metric, parameters).items())
-        lines.append(f"- Metric settings: {metric}({settings})")
+        settings = []
+        for name, value in metric_settings(metric, parameters).items():
+            seconds = parse_duration(value)
+            if seconds is not None and intervals:
+                conversions = "; ".join(
+                    f"{_duration_in_samples(seconds, interval)} samples at {_format_spacing(interval, True)}"
+                    for interval in intervals
+                )
+                settings.append(f"{name}={value} = {conversions}")
+            else:
+                settings.append(f"{name}={value}")
+        lines.append(f"- Metric settings: {metric}({', '.join(settings)})")
     return lines
 
 
@@ -306,6 +318,39 @@ def _numeric_times(values: pd.Series) -> pd.Series | None:
     return None
 
 
+def _spacing(ordered_times: np.ndarray) -> tuple[float, float]:
+    """(interval, spacing_cv) of sorted times, by the rules sampling_summary reports: the
+    interval is the median positive spacing, and spacing_cv the coefficient of variation of
+    the spacings that aren't gaps. (nan, nan) if there's no positive spacing."""
+    spacings = np.diff(ordered_times)
+    spacings = spacings[spacings > 0]
+    if spacings.size == 0:
+        return np.nan, np.nan
+    interval = float(np.median(spacings))
+    regular = spacings[spacings <= GAP_FACTOR * interval]
+    spacing_cv = float(np.std(regular) / np.mean(regular)) if regular.size > 1 else 0.0
+    return interval, spacing_cv
+
+
+def _duration_in_samples(seconds: float, interval: float) -> int:
+    """A duration as a whole number of samples at a sampling interval (both in seconds)."""
+    return max(1, int(round(seconds / interval)))
+
+
+def resolve_duration_parameters(
+    parameters: Mapping[str, Mapping[str, Any]] | None, interval: float
+) -> dict[str, dict[str, Any]]:
+    """metric_parameters with every duration (e.g. "30D") converted to samples at `interval`
+    seconds per sample. Whole numbers already count samples and are kept."""
+    resolved = {}
+    for metric, params in (parameters or {}).items():
+        resolved[metric] = {}
+        for name, value in params.items():
+            seconds = parse_duration(value)
+            resolved[metric][name] = _duration_in_samples(seconds, interval) if seconds is not None else value
+    return resolved
+
+
 def _gap_starts(ordered_times: np.ndarray, max_joined_gap: int = 0) -> np.ndarray:
     """Indices (into the sorted times) where a new segment starts: after any gap, by the same
     rule sampling_summary reports (a spacing over GAP_FACTOR median spacings), unless the gap
@@ -360,10 +405,8 @@ def sampling_summary(
             records.append({**record, "interval": "", "coverage": np.nan, "n_gaps": 0, "longest_gap": "",
                             "duplicate_times": duplicates, "spacing_cv": np.nan, "irregular": False})
             continue
-        interval = float(np.median(spacings))
+        interval, spacing_cv = _spacing(ordered)
         is_gap = spacings > GAP_FACTOR * interval
-        regular = spacings[~is_gap]
-        spacing_cv = float(np.std(regular) / np.mean(regular)) if regular.size > 1 else 0.0
         expected = round((ordered[-1] - ordered[0]) / interval) + 1
         records.append(
             {
@@ -387,6 +430,7 @@ def _sampling_lines(
     excluded: pd.DataFrame | None = None,
     min_coverage: float = 0.8,
     max_joined_gap: int = 0,
+    axis: str = "samples",
 ) -> list[str]:
     lines = ["## Sampling"]
     if time_col is None:
@@ -433,8 +477,13 @@ def _sampling_lines(
     if not irregular.empty:
         lines.append(
             f"- {len(irregular)} of {n_units} unit(s) are irregularly sampled (spacing varies by more than "
-            f"{IRREGULAR_SPACING_CV:.0%} outside gaps). Metric scales count samples, not time, so this matters "
-            "only if a scale is meant as a duration."
+            f"{IRREGULAR_SPACING_CV:.0%} outside gaps). "
+            + (
+                "With axis: time, metrics assume an even time grid, so they aren't computed for these units."
+                if axis == "time"
+                else "Metric scales count samples, not time (axis: samples), so this matters only if a scale "
+                "is meant as a duration."
+            )
         )
     duplicates = int(sampling["duplicate_times"].sum())
     if duplicates:
@@ -456,7 +505,9 @@ def _iter_unit_series(
     gap_policy: str = "join",
     max_joined_gap: int = 0,
 ):
-    """Yield (condition, unit_keys, values) for each recording unit, sorted by time_col when given.
+    """Yield (condition, unit_keys, values, times) for each recording unit, sorted by time_col
+    when given. times are the sorted times as floats (seconds for dates), or None without a
+    readable time column.
 
     With gap_policy "segment", values are Segments split at the unit's time gaps, so
     gap-aware metrics never form a window or template across one. Gaps missing at most
@@ -467,15 +518,12 @@ def _iter_unit_series(
         if time_col is not None:
             group = group.sort_values(time_col, key=_time_sort_key, kind="stable")
         values = group[signal_col].to_numpy(dtype=float)
+        times = _numeric_times(group[time_col]) if time_col is not None else None
+        times = times.to_numpy(dtype=float) if times is not None else None
         if gap_policy == "segment" and time_col is not None:
-            times = _numeric_times(group[time_col])
-            starts = (
-                _gap_starts(times.to_numpy(dtype=float), max_joined_gap)
-                if times is not None
-                else np.array([], dtype=int)
-            )
+            starts = _gap_starts(times, max_joined_gap) if times is not None else np.array([], dtype=int)
             values = Segments(np.split(values, starts))
-        yield keys[0], keys[1:], values
+        yield keys[0], keys[1:], values, times
 
 
 def unit_complexity_summary(
@@ -488,6 +536,7 @@ def unit_complexity_summary(
     metric_parameters: Mapping[str, Mapping[str, Any]] | None = None,
     gap_policy: str = "join",
     max_joined_gap: int = 0,
+    axis: str = "samples",
 ) -> pd.DataFrame:
     """Compute complexity metrics separately within each recording unit of each condition.
 
@@ -496,21 +545,56 @@ def unit_complexity_summary(
     artificial jump at every join that the metrics read as real dynamics. Rows within a
     unit are sorted by time_col when given; otherwise file order is kept. With gap_policy
     "segment", metrics are computed within each unit's gap-free segments (n_segments).
+
+    With axis "time", duration scales in metric_parameters (e.g. "30D") are converted to
+    samples at each unit's own sampling interval, and irregularly sampled units (spacing_cv
+    over IRREGULAR_SPACING_CV) get NaN metrics, with the reason in not_computed, since every
+    metric here assumes an even time grid.
     """
+    has_durations = any(
+        parse_duration(v) is not None for params in (metric_parameters or {}).values() for v in params.values()
+    )
+    if axis == "time" and time_col is None:
+        raise ValueError(
+            f"axis: time needs a time column ({', '.join(_TIME_COLUMN_CANDIDATES)}); none was found."
+        )
+    if has_durations and (time_col is None or not pd.api.types.is_datetime64_any_dtype(_time_sort_key(df[time_col]))):
+        raise ValueError(
+            "Metric scales given as durations (e.g. 30D) need a time column of dates or timestamps to convert "
+            f"them to samples; '{time_col}' holds plain numbers, whose time unit isn't known. Give the scales as "
+            "whole numbers of samples instead."
+            if time_col is not None
+            else "Metric scales given as durations (e.g. 30D) need a time column of dates or timestamps; none was found."
+        )
+    selected = tuple(metrics) if metrics else DEFAULT_METRICS
     records = []
     unit_series = _iter_unit_series(df, signal_col, condition_col, unit_cols, time_col, gap_policy, max_joined_gap)
-    for condition, unit_keys, values in unit_series:
+    for condition, unit_keys, values, times in unit_series:
         segmented = isinstance(values, Segments)
-        records.append(
-            {
-                "condition": condition,
-                **dict(zip(unit_cols, unit_keys)),
-                "signal": signal_col,
-                "n_samples": int(sum(len(v) for v in values)) if segmented else int(values.size),
-                **({"n_segments": len(values)} if segmented else {}),
-                **compute_complexity_metrics(values, metrics=metrics, parameters=metric_parameters),
-            }
-        )
+        record = {
+            "condition": condition,
+            **dict(zip(unit_cols, unit_keys)),
+            "signal": signal_col,
+            "n_samples": int(sum(len(v) for v in values)) if segmented else int(values.size),
+            **({"n_segments": len(values)} if segmented else {}),
+        }
+        parameters = metric_parameters
+        not_computed = ""
+        if axis == "time":
+            interval, spacing_cv = _spacing(times) if times is not None else (np.nan, np.nan)
+            if spacing_cv > IRREGULAR_SPACING_CV:
+                not_computed = f"irregularly sampled (spacing_cv {spacing_cv:.2f} > {IRREGULAR_SPACING_CV:g})"
+            elif has_durations and not np.isfinite(interval):
+                not_computed = "no sampling interval (fewer than two distinct times)"
+            elif has_durations:
+                parameters = resolve_duration_parameters(metric_parameters, interval)
+        if not_computed:
+            record.update({name: np.nan for name in selected})
+        else:
+            record.update(compute_complexity_metrics(values, metrics=metrics, parameters=parameters))
+        if axis == "time":
+            record["not_computed"] = not_computed
+        records.append(record)
     return pd.DataFrame.from_records(records)
 
 
@@ -574,7 +658,7 @@ def condition_significance_summary(
     """
     metric_cols = [m for m in (metrics or DEFAULT_METRICS) if unit_summary is not None and m in unit_summary.columns]
     series_by_condition: dict = {}
-    for condition, _, values in _iter_unit_series(df, signal_col, condition_col, unit_cols, time_col):
+    for condition, _, values, _ in _iter_unit_series(df, signal_col, condition_col, unit_cols, time_col):
         series_by_condition.setdefault(condition, []).append(values)
 
     records = []
@@ -656,6 +740,31 @@ def condition_cross_signal_summary(
     return pd.DataFrame.from_records(records)
 
 
+def _unit_intervals(
+    df: pd.DataFrame, condition_col: str, unit_cols: Sequence[str], time_col: str | None
+) -> list[float]:
+    """The distinct sampling intervals (seconds) of the recording units, when time_col holds
+    dates; empty otherwise. Used to show what a duration scale became in samples."""
+    if time_col is None or not pd.api.types.is_datetime64_any_dtype(_time_sort_key(df[time_col])):
+        return []
+    times = _numeric_times(df[time_col])
+    intervals = {
+        _spacing(np.sort(values.dropna().to_numpy(dtype=float)))[0]
+        for _, values in times.groupby([df[condition_col], *(df[c] for c in unit_cols)], dropna=False)
+    }
+    return sorted(i for i in intervals if np.isfinite(i))
+
+
+def _unit_lines(units: Mapping[str, str], columns: Sequence[str]) -> list[str]:
+    """One report line listing the declared value units, noting any column not in the data."""
+    if not units:
+        return []
+    present = set(map(str, columns))
+    text = ", ".join(f"{col} in {unit}" + ("" if col in present else " (not in this dataset)")
+                     for col, unit in units.items())
+    return [f"- Units: {text}"]
+
+
 def _unit_method_note(unit_complexity: pd.DataFrame, unit_cols: Sequence[str], time_col: str | None) -> str:
     order = f"sorted by {time_col}" if time_col else "in file order (no time column found)"
     if not unit_cols:
@@ -683,6 +792,19 @@ def _undefined_metric_lines(unit_complexity: pd.DataFrame, metrics: Sequence[str
     lines = []
     if unit_complexity.empty:
         return lines
+    if "not_computed" in unit_complexity.columns:
+        skipped = unit_complexity[unit_complexity["not_computed"].fillna("") != ""]
+        for signal, rows in skipped.groupby("signal", sort=True):
+            label_cols = [c for c in rows.columns if c not in ("signal", "n_samples", "n_segments", "not_computed",
+                                                                *metrics)]
+            names = "; ".join(
+                f"{'/'.join(str(row[c]) for c in label_cols)}: {row['not_computed']}" for _, row in rows.iterrows()
+            )
+            lines.append(
+                f"- No metrics for {len(rows)} recording(s) of {signal}, because with axis: time each metric "
+                f"assumes an even time grid ({names})."
+            )
+        unit_complexity = unit_complexity[unit_complexity["not_computed"].fillna("") == ""]
     for metric in metrics:
         if metric not in unit_complexity.columns:
             continue
@@ -848,6 +970,11 @@ def analyze_dataset(
     time_col = resolve_time_column(df)
     sampling = sampling_summary(df, condition_col=condition_col, unit_cols=selected_units, time_col=time_col)
     gap_policy = domain_profile.gap_policy
+    if domain_profile.axis == "time" and sampling.empty:
+        raise ValueError(
+            f"Domain profile '{domain_profile.name}' sets axis: time, which needs a readable time column "
+            f"({', '.join(_TIME_COLUMN_CANDIDATES)}); none was found."
+        )
     if gap_policy != "join" and sampling.empty:
         raise ValueError(
             f"Domain profile '{domain_profile.name}' sets gap_policy: {gap_policy}, which needs a readable time "
@@ -869,7 +996,10 @@ def analyze_dataset(
     for signal in selected_signals:
         if signal not in df.columns:
             raise ValueError(f"Signal column '{signal}' was not found in the dataset.")
-        summary_frames.append(summarize_condition(df, signal_col=signal, condition_col=condition_col).assign(signal=signal))
+        signal_summary = summarize_condition(df, signal_col=signal, condition_col=condition_col).assign(signal=signal)
+        if domain_profile.units:
+            signal_summary["unit"] = domain_profile.units.get(signal, "")
+        summary_frames.append(signal_summary)
         metrics = domain_profile.recommended_metrics or None
         unit_complexity = unit_complexity_summary(
             df,
@@ -881,6 +1011,7 @@ def analyze_dataset(
             metric_parameters=domain_profile.metric_parameters,
             gap_policy=gap_policy,
             max_joined_gap=domain_profile.max_joined_gap,
+            axis=domain_profile.axis,
         )
         unit_complexity_frames.append(unit_complexity)
         complexity_frames.append(
@@ -888,17 +1019,20 @@ def analyze_dataset(
                 df, signal_col=signal, condition_col=condition_col, metrics=metrics, unit_summary=unit_complexity
             )
         )
-        significance_frames.append(
-            condition_significance_summary(
-                df,
-                signal_col=signal,
-                condition_col=condition_col,
-                unit_cols=selected_units,
-                time_col=time_col,
-                unit_summary=unit_complexity,
-                metrics=metrics,
-            )
+        signal_significance = condition_significance_summary(
+            df,
+            signal_col=signal,
+            condition_col=condition_col,
+            unit_cols=selected_units,
+            time_col=time_col,
+            unit_summary=unit_complexity,
+            metrics=metrics,
         )
+        if domain_profile.units and not signal_significance.empty:
+            # Only the signal level has the signal's unit; the complexity metrics are unitless.
+            is_level = signal_significance["measure"] == _SIGNAL_LEVEL_MEASURE
+            signal_significance["unit"] = np.where(is_level, domain_profile.units.get(signal, ""), "")
+        significance_frames.append(signal_significance)
 
     summary = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
     complexity = pd.concat(complexity_frames, ignore_index=True) if complexity_frames else pd.DataFrame()
@@ -950,8 +1084,10 @@ def analyze_dataset(
         f"- Signal columns: {', '.join(selected_signals)}",
         f"- Condition column: {condition_col}",
         f"- Recording unit columns: {', '.join(selected_units) if selected_units else 'none'}",
-        *_metric_settings_lines(domain_profile),
+        *([f"- Time axis: metric scales are in time (axis: time)"] if domain_profile.axis == "time" else []),
+        *_metric_settings_lines(domain_profile, _unit_intervals(df, condition_col, selected_units, time_col)),
         *([f"- Gap policy: {gap_policy}"] if gap_policy != "join" else []),
+        *_unit_lines(domain_profile.units, df.columns),
         "",
     ]
     if domain_profile.signal_roles:
@@ -982,6 +1118,7 @@ def analyze_dataset(
             excluded=excluded,
             min_coverage=domain_profile.min_coverage,
             max_joined_gap=domain_profile.max_joined_gap,
+            axis=domain_profile.axis,
         )
     )
     report_lines.append("## Condition summary")

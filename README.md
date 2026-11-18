@@ -86,6 +86,26 @@ metric_parameters:
 Unknown metrics or parameter names are rejected at load time, and the settings used are
 printed in the report.
 
+With `axis: time`, a scale may be a duration instead (`30D`, `12h`, `15min`, `2W`, `10s`).
+Each recording converts it to samples at its own sampling interval, and the report prints
+both (`min_scale=30D = 30 samples at 1D`), so one profile means the same thing on daily and
+hourly data. A whole number still means samples. Durations need a time column of dates or
+timestamps, and they're rejected on the default `axis: samples` (which suits heart-rate
+data, where scales count beats). Under `axis: time`, irregularly sampled recordings get no
+metrics, and the report gives the reason, because every metric here assumes an even time grid.
+A profile can also declare value units (`units: {tmax_anomaly: degC}`). These are printed in the
+report and added to the signal-level rows of `condition_summary.csv` and
+`significance_summary.csv`. Units aren't converted: the complexity metrics don't change
+under a linear change of units, so the declared unit labels only the mean and the other descriptive statistics.
+
+```yaml
+axis: time
+metric_parameters:
+  dfa_exponent: {min_scale: 30D, max_scale: 3000D, order: 2}
+units:
+  tmax_anomaly: degC
+```
+
 ## Network pipeline: what it does today
 
 For data that's naturally shaped as a graph (nodes and edges) rather than parallel time
