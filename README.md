@@ -194,7 +194,7 @@ in exactly the shapes these profiles expect, and can run them directly.
 | Profile | Pipeline | Data | Grounded in |
 |---|---|---|---|
 | `collective_behavior` | time series | per-frame group alignment (`polarization`), circling (`rotation`), speed and spacing; `session` = video | Vicsek et al., 1995; Couzin et al., 2002; Tunstrøm et al., 2013; Cavagna et al., 2010 |
-| `neural_activity` | time series | ΔF/F per neuron per frame (`dff`), units `session,neuron_id`; DFA windows start at 16 frames to clear calcium decay | Chen et al., 2013; Linkenkaer-Hansen et al., 2001; Beggs & Plenz, 2003 |
+| `neural_activity` | time series | ΔF/F per neuron per frame (`dff`), units `session,neuron_id`; DFA windows start at 16 frames, which still includes the indicator's smoothing (see the neural activity validation) | Chen et al., 2013; Linkenkaer-Hansen et al., 2001; Beggs & Plenz, 2003 |
 | `animal_social_network` | network | who came near whom, weighted by seconds in contact | Krause et al., 2007; Wey et al., 2008; Farine & Whitehead, 2015; Lusseau & Newman, 2004 |
 | `neuronal_network` | network | neuron pairs whose activity is correlated above a threshold | Bullmore & Sporns, 2009; Rubinov & Sporns, 2010; van Wijk et al., 2010; Bonifazi et al., 2009 |
 
@@ -357,6 +357,13 @@ The pipeline reproduces long-range persistence near the published α ≈ 0.65 at
 continental station, with a narrow spread, and higher, more varied exponents on islands.
 With only 5 island stations, the island difference is not significant (p = 0.075). See
 [docs/validation/ghcn_temperature.md](docs/validation/ghcn_temperature.md).
+
+`tests/test_neural_activity_synthetic.py` checks the `neural_activity` profile on simulated
+calcium imaging, where the answer is known by construction. Correlated firing stands out from its
+shuffles, and calcium smoothing lowers sample entropy as expected. But the indicator's smoothing
+inflates the DFA exponent far beyond its decay time: uncorrelated spiking reads 0.69 from the
+profile's 16-frame windows. See
+[docs/validation/neural_activity_synthetic.md](docs/validation/neural_activity_synthetic.md).
 
 `tests/test_social_network_validation.py` checks the network pipeline, with the
 `social_network` profile, on Zachary's karate club and the ca-GrQc co-authorship network:
