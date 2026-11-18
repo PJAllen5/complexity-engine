@@ -26,7 +26,7 @@ existing outputs unchanged, like the time-axis work.
 | E7 | **Fetch-time format conversion** (WFDB, EDF, NWB → CSV) in `data/fetch_*.py`, with a `[fetch]` optional dependency group | gait, EEG, neural | Keeps the engine itself CSV/Excel-only. |
 
 Also needed by Part A: **design PR 5 (attribute mixing)** for the dolphin network's
-known-group check. It builds on the node table (design PR 4, branch `add-node-table`).
+known-group check. It builds on the node table (design PR 4, merged in #74).
 
 ---
 
