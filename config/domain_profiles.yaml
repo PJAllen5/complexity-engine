@@ -293,6 +293,42 @@ population_dynamics:
     spectral_entropy: How evenly variance spreads across periods. Low values mean a few periods dominate, as in a cycling population; values near 1 mean irregular fluctuation at all periods.
     sample_entropy: Irregularity from one interval to the next. A cycling population is predictable from its recent values and has low sample entropy. Only computed for records of at least 100 values.
 
+eeg_oscillations:
+  name: eeg_oscillations
+  description: Long-range temporal correlations in the amplitude of brain oscillations, from continuous resting EEG or MEG, focused on the alpha rhythm (8-13 Hz).
+  analysis_question: Does the strength of the alpha rhythm wax and wane with long-range, power-law correlations over seconds to minutes, as in the healthy resting brain, and are those correlations weaker in a condition such as neurodegenerative disease?
+  recommended_metrics:
+    - dfa_exponent
+  # Each occipital channel is band-passed to alpha and replaced by its amplitude envelope, whose
+  # fluctuations DFA measures (Linkenkaer-Hansen et al., 2001). sampling_interval is for data at
+  # 125 Hz; change it, and the scales below, for other rates.
+  transforms:
+    o1: ["bandpass(8, 13)", envelope]
+    o2: ["bandpass(8, 13)", envelope]
+  sampling_interval: 0.008s
+  metric_parameters:
+    # 5 s to 150 s at 125 Hz. Linkenkaer-Hansen et al. (2001) fitted 5-300 s on 20-min
+    # recordings; 150 s keeps four windows in records of 10 minutes or more.
+    dfa_exponent:
+      min_scale: 625
+      max_scale: 18750
+  # Each envelope is compared with 99 shuffled copies of itself, which have no long-range
+  # correlation by construction.
+  surrogates:
+    type: shuffle
+    count: 99
+  expected_columns:
+    - o1
+    - o2
+    - condition
+    - subject_id
+  signal_roles:
+    primary_signal: Raw EEG in microvolts from occipital channels (O1, O2), one column per channel, continuous eyes-closed rest of at least 10 minutes.
+    condition: Group being compared, such as healthy controls and a patient group.
+    covariate: subject_id identifies one recording; a time column gives seconds.
+  interpretation_rules:
+    dfa_exponent: DFA exponent of the alpha amplitude envelope. In the healthy resting brain, alpha amplitude fluctuates with long-range temporal correlations, with exponents around 0.7 over seconds to minutes and well above shuffled or phase-randomized data near 0.5 (Linkenkaer-Hansen et al., 2001). Lower exponents mean weaker temporal correlation, as reported for parietal alpha in early Alzheimer's disease (Montez et al., 2009). The exponent depends on the band and window range, so compare only values computed the same way.
+
 # --- Profiles for data exported by behavetrack (video and microscope tracking) ---------------
 # `behavetrack export-complexity` writes files in exactly these shapes; see that project's README.
 
