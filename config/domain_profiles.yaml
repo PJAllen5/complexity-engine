@@ -107,6 +107,29 @@ heart_rate_variability:
     dfa_short_term: Short-range DFA exponent over windows of 4-16 beats, the range used for heart-rate DFA (Peng et al., 1995). Healthy elderly subjects show a higher short-range exponent than young subjects (Iyengar et al., 1996), meaning smoother, more random-walk-like fluctuation over a few beats, consistent with a single dominant regulatory time scale replacing the multi-scale control of the young heart.
     dfa_long_term: Long-range DFA exponent over windows of 16-64 beats (Peng et al., 1995). Values near 1.0 indicate the 1/f-like fractal scaling of healthy heart rate, and a drop toward 0.5 indicates a loss of long-range correlation, which has been reported in healthy elderly subjects (Iyengar et al., 1996). That study's long-range exponent may span a wider window than 16-64 beats, so compare directions rather than absolute values.
 
+gait:
+  name: gait
+  description: Stride-to-stride walking dynamics, focused on the long-range fractal correlations of healthy gait and their loss with aging and neurological disease.
+  analysis_question: Do stride intervals keep the long-range, fractal correlations of healthy walking, or do they become more random, as reported with aging and Huntington's disease?
+  recommended_metrics:
+    - dfa_exponent
+  # Scales count strides (axis: samples), as heart-rate scales count beats. DFA1 from
+  # 16 strides up to a quarter of the series, as roadmap item B4 specifies.
+  metric_parameters:
+    dfa_exponent:
+      min_scale: 16
+      order: 1
+  expected_columns:
+    - stride_interval
+    - condition
+    - subject_id
+  signal_roles:
+    primary_signal: Stride interval in seconds (foot strike to the next strike of the same foot), one value per stride, from continuous level walking, with strides more than 3 SD from the subject's mean (turns, stumbles) removed.
+    condition: Group being compared, such as young vs elderly or a patient group vs controls.
+    covariate: Optional metadata such as age, gait speed, or a disease-severity score.
+  interpretation_rules:
+    dfa_exponent: DFA exponent of the stride-interval series. Healthy young adults show long-range, fractal correlations, with an exponent near 0.9, so a stride's deviation from the mean persists across hundreds of strides (Hausdorff et al., 1995). The exponent falls toward 0.5 (uncorrelated) in healthy elderly adults and in Huntington's disease, and in Huntington's disease it falls further with greater functional impairment (Hausdorff et al., 1997). A lower exponent therefore points to a loss of the multi-scale neural control of walking, not to steadier walking; stride-time variability is a separate measure.
+
 climate_temperature:
   name: climate_temperature
   description: Daily surface air temperature records, focused on long-range persistence -- how strongly a warm or cold anomaly carries over into the following weeks, months, and years.
