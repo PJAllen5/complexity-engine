@@ -333,6 +333,69 @@ _METRIC_FUNCTIONS = {
 }
 
 
+# Surrogate baselines: "shuffle" permutes the values, destroying all temporal order while
+# keeping the distribution; "phase" randomizes Fourier phases, keeping the power spectrum
+# (and so the linear autocorrelation) while destroying everything else (Theiler et al., 1992).
+SURROGATE_TYPES = ("shuffle", "phase")
+
+
+def _phase_randomized(x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    if x.size < 3:
+        return x.copy()
+    mean = x.mean()
+    spectrum = np.fft.rfft(x - mean)
+    phases = rng.uniform(0.0, 2.0 * np.pi, spectrum.size)
+    phases[0] = 0.0
+    if x.size % 2 == 0:
+        phases[-1] = 0.0  # the Nyquist term of a real signal must stay real
+    return np.fft.irfft(np.abs(spectrum) * np.exp(1j * phases), x.size) + mean
+
+
+def make_surrogate(signal, kind: str, rng: np.random.Generator):
+    """One surrogate of `signal` (an array or Segments, returned in the same form).
+
+    For Segments, a shuffle permutes values across the whole recording and re-splits them at
+    the original segment lengths; phase randomization is applied to each segment separately.
+    """
+    if kind not in SURROGATE_TYPES:
+        raise ValueError(f"Unknown surrogate type '{kind}'; use one of {', '.join(SURROGATE_TYPES)}.")
+    segments = _as_segments(signal)
+    if kind == "shuffle":
+        values = rng.permutation(np.concatenate(segments)) if segments else np.array([], dtype=float)
+        pieces = np.split(values, np.cumsum([len(segment) for segment in segments])[:-1])
+    else:
+        pieces = [_phase_randomized(np.asarray(segment, dtype=float), rng) for segment in segments]
+    return Segments(pieces) if isinstance(signal, Segments) else pieces[0]
+
+
+def surrogate_test(
+    signal,
+    metric: str,
+    observed: float,
+    parameters: Mapping[str, Any] | None = None,
+    kind: str = "shuffle",
+    count: int = 200,
+    rng: np.random.Generator | None = None,
+) -> dict[str, float]:
+    """Compare a metric's observed value with its values on `count` surrogates of the signal.
+
+    Returns the surrogate mean and a two-sided empirical p: the share of surrogates at least as
+    far from the surrogate mean as the observed value is, counting the observation itself,
+    (1 + k) / (1 + n), so the smallest possible p is 1 / (count + 1). NaN when the observed
+    value is NaN or no surrogate gives a finite value.
+    """
+    rng = rng if rng is not None else np.random.default_rng()
+    function, _ = _METRIC_FUNCTIONS[metric]
+    settings = metric_settings(metric, parameters)
+    values = np.array([float(function(make_surrogate(signal, kind, rng), **settings)) for _ in range(count)])
+    values = values[np.isfinite(values)]
+    if values.size == 0 or not np.isfinite(observed):
+        return {"surrogate_mean": float(values.mean()) if values.size else np.nan, "surrogate_p": np.nan}
+    center = values.mean()
+    extreme = np.sum(np.abs(values - center) >= abs(observed - center))
+    return {"surrogate_mean": float(center), "surrogate_p": float((1 + extreme) / (1 + values.size))}
+
+
 # Computed when a domain profile doesn't name its metrics; the scale-range DFA variants
 # are opt-in, since they're only meaningful for signals with a known crossover scale.
 DEFAULT_METRICS = ("sample_entropy", "spectral_entropy", "dfa_exponent")
