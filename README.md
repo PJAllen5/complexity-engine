@@ -70,7 +70,7 @@ built on that foundation.
    base64-inlined into the single file) to an output directory.
 
 Domain profiles for this pipeline (`physiology`, `cognitive`, `stress`, `attention`,
-`heart_rate_variability`, `climate_temperature`, and any
+`heart_rate_variability`, `climate_temperature`, `gait`, `population_dynamics`, and any
 custom ones you add) live in `config/domain_profiles.yaml` (or `.json`) and can be extended or
 overridden without touching Python code. A profile's `recommended_metrics` is validated
 against the pipeline's known metrics as soon as the domain is looked up — before any data is
@@ -379,6 +379,18 @@ The pipeline reproduces long-range persistence near the published α ≈ 0.65 at
 continental station, with a narrow spread, and higher, more varied exponents on islands.
 With only 5 island stations, the island difference is not significant (p = 0.075). See
 [docs/validation/ghcn_temperature.md](docs/validation/ghcn_temperature.md).
+
+`tests/test_lynx_validation.py` checks the `population_dynamics` profile on the Canadian lynx
+trappings, 1821–1934:
+
+```bash
+python data/fetch_population_series.py   # 114 annual values -> data/external/lynx.csv
+python -m pytest -q tests/test_lynx_validation.py
+```
+
+The dominant period is 9.5 years, matching the ten-year cycle of Elton & Nicholson (1942). That cycle
+carries 52% of the variance, against 8% in shuffled copies (p = 0.005). See
+[docs/validation/lynx.md](docs/validation/lynx.md).
 
 `tests/test_neural_activity_synthetic.py` checks the `neural_activity` profile on simulated
 calcium imaging, where the answer is known by construction. Correlated firing stands out from its
