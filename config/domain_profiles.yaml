@@ -193,6 +193,35 @@ network:
     small_world_sigma: Sigma directly formalizes the Watts-Strogatz small-world criterion (Watts & Strogatz, 1998; Humphries & Gurney, 2008) by comparing clustering and path length against matched random reference graphs; sigma greater than 1 indicates small-world structure (elevated clustering without a proportional cost in path length), while sigma at or below 1 indicates the network is no more clustered than a comparable random graph.
     small_world_omega: Omega compares the network against both a random and a lattice reference simultaneously (Telesford et al., 2011); values near 0 indicate small-world structure, negative values indicate the network is more lattice-like (highly clustered but with long paths), and positive values indicate the network is more random-like.
 
+infrastructure_network:
+  name: infrastructure_network
+  description: Spatial infrastructure networks such as road, rail, power-grid and pipeline networks, where nodes are junctions or stations and edges are physical links, focused on how constrained by geography, how redundant and how far-reaching they are.
+  analysis_question: Is the network laid out like a spatial lattice (few short cuts, long paths, low clustering) or does it have the short paths of a small world, and how modular and redundant is it?
+  recommended_metrics:
+    - n_nodes
+    - n_edges
+    - mean_degree
+    - density
+    - avg_clustering
+    - transitivity
+    - modularity
+    - avg_shortest_path_length
+    - n_connected_components
+  expected_columns:
+    - source
+    - target
+  signal_roles:
+    source: One junction, substation or station.
+    target: The junction, substation or station at the other end of the link.
+    weight: Optional link capacity or length; used for clustering and modularity, not for path length.
+    condition: Optional label for comparing networks, such as regions, years or before and after a failure.
+  interpretation_rules:
+    mean_degree: Average number of links per junction. Infrastructure built on the ground is planar or nearly so, so mean degree stays low (about 2.5 to 3 for road and power networks) however large the network grows; the power grid analyzed by Watts & Strogatz (1998) has 2.67.
+    avg_clustering: Spatial networks have few triangles, since three junctions rarely all link directly; the power grid's clustering is 0.08 (Watts & Strogatz, 1998) and California's road network 0.046 (Leskovec et al., 2009). Higher clustering means more local loops, and so more local redundancy.
+    avg_shortest_path_length: Number of links between two junctions, averaged over the largest connected part. Spatial networks have long paths that grow with the network's size, unlike small worlds; the power grid's 18.7 links is far above a random graph of the same size (Watts & Strogatz, 1998). For very large networks it is estimated from sampled sources (see the report).
+    modularity: How cleanly the network divides into regions with dense internal links and few between. Road networks are very modular, since geography keeps most links local (Leskovec et al., 2009). For networks over 100,000 nodes, communities come from the Louvain method (Blondel et al., 2008), which finds higher values than the greedy method used for smaller ones.
+    n_connected_components: Separate pieces that can't reach each other, such as islands or isolated sub-grids. A large share of junctions outside the largest component points to fragmentation or data gaps.
+
 social_network:
   name: social_network
   description: Social networks of people or organizations (friendship, collaboration, communication), focused on cohesive subgroups, triadic closure, and how quickly anyone can reach anyone else.

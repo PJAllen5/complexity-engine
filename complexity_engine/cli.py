@@ -97,6 +97,7 @@ def network_main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--node-col", type=str, default="node", help="Node id column in the --nodes table.")
     parser.add_argument("--attributes", type=str, default=None, help="Comma-separated node-table columns to measure attribute mixing for (assortativity, same-group tie share, permutation p, community NMI); defaults to the profile's node_attributes. Needs --nodes.")
     parser.add_argument("--permutations", type=int, default=1000, help="Shuffles of each attribute for the attribute-mixing p-value.")
+    parser.add_argument("--path-sources", type=int, default=50, help="For networks too large for exact path lengths (over 50,000 nodes in the largest component), the number of randomly chosen sources the average shortest path is estimated from.")
     parser.add_argument("--random-seed", type=int, default=42, help="Seed for the randomized reference graphs used by --compute-small-world.")
     parser.add_argument("--domain", type=str, default="network", help="Domain profile to apply.")
     parser.add_argument("--domain-config", type=str, default=None, help="Optional path to a YAML or JSON config file containing custom domain profiles.")
@@ -130,6 +131,7 @@ def network_main(argv: Sequence[str] | None = None) -> None:
         node_col=args.node_col,
         attributes=[a.strip() for a in args.attributes.split(",") if a.strip()] if args.attributes else None,
         permutations=args.permutations,
+        path_sources=args.path_sources,
     )
 
     if result["missing_columns"]:

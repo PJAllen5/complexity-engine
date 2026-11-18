@@ -25,6 +25,8 @@ from .domain_profiles import (
 )
 from .network_metrics import (
     ATTRIBUTE_MIXING_COLUMNS,
+    MAX_GREEDY_COMMUNITY_NODES,
+    MAX_SMALL_WORLD_NODES,
     NETWORK_METRIC_KEYS,
     attribute_mixing,
     build_graph,
@@ -274,6 +276,7 @@ def analyze_network(
     node_col: str = "node",
     attributes: Sequence[str] | None = None,
     permutations: int = 1000,
+    path_sources: int = 50,
 ) -> dict[str, pd.DataFrame | dict | str]:
     load_domain_profiles(domain_config)
     domain_profile = get_domain_profile(domain)
@@ -322,7 +325,7 @@ def analyze_network(
         [
             {
                 "condition": condition,
-                **compute_network_metrics(graph),
+                **compute_network_metrics(graph, path_sources=path_sources, seed=random_seed),
                 **(compute_small_world_metrics(graph, seed=random_seed) if compute_small_world else {}),
             }
             for condition, graph in graphs.items()
@@ -352,7 +355,7 @@ def analyze_network(
     if compute_communities:
         community_frames = []
         for condition, graph in graphs.items():
-            frame = compute_node_communities(graph)
+            frame = compute_node_communities(graph, seed=random_seed)
             frame.insert(0, "condition", condition)
             community_frames.append(frame)
         communities_df = pd.concat(community_frames, ignore_index=True) if community_frames else pd.DataFrame()
@@ -434,7 +437,25 @@ def analyze_network(
         report_lines.append(
             "Note: small_world_sigma/small_world_omega are NaN for any condition whose network "
             "isn't undirected, fully connected, and at least 4 nodes/2 edges -- these statistics "
-            "compare against randomized reference graphs and aren't well-defined otherwise."
+            "compare against randomized reference graphs and aren't well-defined otherwise. They're "
+            f"also skipped (NaN) above {MAX_SMALL_WORLD_NODES:,} nodes, where rewiring and re-measuring "
+            "the graph many times is infeasible."
+        )
+        report_lines.append("")
+    if any(graph.number_of_nodes() > MAX_GREEDY_COMMUNITY_NODES for graph in graphs.values()):
+        report_lines.append(
+            f"Note: for networks over {MAX_GREEDY_COMMUNITY_NODES:,} nodes, communities (and so modularity) come from "
+            "the Louvain method (Blondel et al., 2008), seeded by --random-seed, instead of greedy modularity "
+            "maximization, which is infeasible at that size. Louvain usually finds higher modularity, so compare "
+            "modularity only between networks analyzed with the same method."
+        )
+        report_lines.append("")
+    if "path_length_sources" in metrics_df.columns and metrics_df["path_length_sources"].notna().any():
+        report_lines.append(
+            "Note: for networks too large for exact all-pairs paths, avg_shortest_path_length is estimated by "
+            "breadth-first search from randomly chosen sources (path_length_sources, seeded by --random-seed). "
+            "Each source's distances are exact, so the estimate's error comes only from which sources were "
+            "drawn; rerun with another seed to see its size."
         )
         report_lines.append("")
     report_lines.append("## Network metrics")

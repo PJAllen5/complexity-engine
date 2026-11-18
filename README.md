@@ -170,6 +170,12 @@ parallel pipeline:
    `avg_shortest_path_length`. Only well-defined for an undirected, fully connected network
    with at least 4 nodes — NaN otherwise. Off by default since it's the most computationally
    expensive metric in either pipeline.
+   **Large networks:** above 50,000 nodes in the largest component, the average shortest path
+   is estimated by breadth-first search from `--path-sources` randomly chosen nodes (default 50,
+   seeded), and the report says so. Above 100,000 nodes, communities and modularity come from
+   the Louvain method instead of greedy modularity, and small-world statistics are skipped
+   above 5,000 nodes. Smaller networks are analyzed exactly as before. On California's road
+   network (2 million nodes) a full run takes a few minutes.
 6. **Visualize** the degree distribution per condition as a small-multiple bar chart.
 7. **Interpret domain-aware**, grounded in the network-science literature already in the
    bibliography: small-world structure (Watts & Strogatz, 1998), scale-free/hub structure
@@ -409,6 +415,18 @@ network. See [docs/validation/reference_networks.md](docs/validation/reference_n
 Doubtful Sound dolphins (same fetch script). Size, degree assortativity (−0.044) and the main
 broker (SN100) match Lusseau & Newman (2004). Modularity is 0.496, just inside the 0.52 ± 0.03
 of Newman & Girvan (2004). See [docs/validation/dolphins.md](docs/validation/dolphins.md).
+
+`tests/test_road_network_validation.py` is a scale test of large-network mode on California's
+road network (SNAP roadNet-CA, 2 million nodes), with the `infrastructure_network` profile:
+
+```bash
+python data/fetch_road_network.py   # ~18 MB download -> data/external/roadnet_ca_edges.csv (~40 MB)
+python -m pytest -q tests/test_road_network_validation.py   # ~4 minutes
+```
+
+Node, edge, component and triangle counts and clustering match SNAP exactly, and a full run takes
+3.5 minutes. Path length estimated from 20 sources varies by about 6% between seeds. See
+[docs/validation/road_network.md](docs/validation/road_network.md). CI doesn't download this one.
 
 ## Literature base
 
