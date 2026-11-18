@@ -51,10 +51,11 @@ def build_graph(
     """
     graph = nx.DiGraph() if directed else nx.Graph()
     has_weight = weight_col is not None and weight_col in edges.columns
-    for _, row in edges.iterrows():
-        source, target = row[source_col], row[target_col]
-        weight = float(row[weight_col]) if has_weight else 1.0
-        graph.add_edge(source, target, weight=weight)
+    # Added in bulk, in row order, so a repeated pair keeps its last weight, as edge-by-edge
+    # insertion would; .tolist() keeps each column's own type (ints stay ints even when the
+    # weight column is float, which row-by-row iteration used to upcast).
+    weights = edges[weight_col].astype(float).tolist() if has_weight else [1.0] * len(edges)
+    graph.add_weighted_edges_from(zip(edges[source_col].tolist(), edges[target_col].tolist(), weights))
     return graph
 
 
@@ -66,7 +67,41 @@ def _empty_metrics() -> dict[str, float]:
     }
 
 
-def compute_network_metrics(graph: nx.Graph) -> dict[str, float]:
+# Above these sizes the network is "large": path length is estimated from sampled sources,
+# and the small-world statistics (which rewire and re-measure the whole graph many times) are
+# skipped. Both are far above the validated networks (ca-GrQc, 5,242 nodes), so their
+# results are unchanged.
+MAX_EXACT_PATH_NODES = 50_000
+DEFAULT_PATH_SOURCES = 50
+MAX_SMALL_WORLD_NODES = 5_000
+# Greedy modularity (Clauset, Newman & Moore) is infeasible on millions of nodes; Louvain
+# (Blondel et al., 2008) takes about 2 minutes on the 2-million-node California road network.
+MAX_GREEDY_COMMUNITY_NODES = 100_000
+
+
+def sampled_average_path_length(graph: nx.Graph, n_sources: int = DEFAULT_PATH_SOURCES, seed: int = 0) -> float:
+    """Average shortest path length of a connected graph (strongly connected if directed),
+    estimated by breadth-first search from n_sources nodes drawn at random (seeded). Each
+    source's mean distance to every other node is exact, so the only error is from which
+    sources were drawn; with all nodes as sources it equals the exact value."""
+    nodes = list(graph.nodes)
+    if len(nodes) < 2:
+        return float("nan")
+    rng = np.random.default_rng(seed)
+    chosen = rng.choice(len(nodes), size=min(n_sources, len(nodes)), replace=False)
+    means = []
+    for index in chosen:
+        lengths = nx.single_source_shortest_path_length(graph, nodes[index])
+        means.append(sum(lengths.values()) / (len(lengths) - 1))
+    return float(np.mean(means))
+
+
+def compute_network_metrics(
+    graph: nx.Graph,
+    max_exact_path_nodes: int | None = None,
+    path_sources: int = DEFAULT_PATH_SOURCES,
+    seed: int = 0,
+) -> dict[str, float]:
     """Compute graph-level summary metrics.
 
     avg_shortest_path_length is unweighted hop count (the standard definition used
@@ -81,6 +116,10 @@ def compute_network_metrics(graph: nx.Graph) -> dict[str, float]:
     avg_shortest_path_length is computed on the largest *strongly* connected
     component (the only subgraph where every pair is mutually reachable, so
     directed path length is well-defined) -- see n_strongly_connected_components.
+
+    When that component has more than max_exact_path_nodes nodes, exact all-pairs paths are
+    infeasible, so the path length is estimated from path_sources sampled sources
+    (sampled_average_path_length) and path_length_sources reports how many were used.
     """
     n_nodes = graph.number_of_nodes()
     n_edges = graph.number_of_edges()
@@ -95,19 +134,25 @@ def compute_network_metrics(graph: nx.Graph) -> dict[str, float]:
         weak_components = list(nx.weakly_connected_components(graph))
         strong_components = list(nx.strongly_connected_components(graph))
         largest_strong = graph.subgraph(max(strong_components, key=len)) if strong_components else graph
-        avg_shortest_path_length = (
-            nx.average_shortest_path_length(largest_strong) if largest_strong.number_of_nodes() > 1 else float("nan")
-        )
+        path_component = largest_strong
         n_connected_components = len(weak_components)
     else:
         components = list(nx.connected_components(graph))
         largest_component = graph.subgraph(max(components, key=len)) if components else graph
-        avg_shortest_path_length = (
-            nx.average_shortest_path_length(largest_component) if largest_component.number_of_nodes() > 1 else float("nan")
-        )
+        path_component = largest_component
         n_connected_components = len(components)
 
-    communities = detect_communities(graph)
+    if max_exact_path_nodes is None:
+        max_exact_path_nodes = MAX_EXACT_PATH_NODES
+    sampled_paths = path_component.number_of_nodes() > max_exact_path_nodes
+    if path_component.number_of_nodes() < 2:
+        avg_shortest_path_length = float("nan")
+    elif sampled_paths:
+        avg_shortest_path_length = sampled_average_path_length(path_component, path_sources, seed)
+    else:
+        avg_shortest_path_length = nx.average_shortest_path_length(path_component)
+
+    communities = detect_communities(graph, seed=seed)
     modularity = nx.algorithms.community.modularity(graph, communities, weight="weight" if has_weight else None)
 
     degrees = [d for _, d in graph.degree()]
@@ -129,25 +174,36 @@ def compute_network_metrics(graph: nx.Graph) -> dict[str, float]:
         metrics["mean_in_degree"] = sum(in_degrees) / n_nodes
         metrics["mean_out_degree"] = sum(out_degrees) / n_nodes
         metrics["n_strongly_connected_components"] = len(strong_components)
+    if sampled_paths:
+        metrics["path_length_sources"] = min(path_sources, path_component.number_of_nodes())
     return metrics
 
 
-def detect_communities(graph: nx.Graph) -> list[frozenset]:
-    """Communities found by greedy modularity maximization (Clauset, Newman & Moore), largest
-    first. Weighted when the graph has edge weights, matching how modularity is scored."""
+def community_method(graph: nx.Graph) -> str:
+    return "louvain" if graph.number_of_nodes() > MAX_GREEDY_COMMUNITY_NODES else "greedy"
+
+
+def detect_communities(graph: nx.Graph, seed: int = 0) -> list[frozenset]:
+    """Communities, largest first: greedy modularity maximization (Clauset, Newman & Moore),
+    or, above MAX_GREEDY_COMMUNITY_NODES nodes, the Louvain method (Blondel et al., 2008),
+    seeded. Weighted when the graph has edge weights, matching how modularity is scored."""
     if graph.number_of_nodes() == 0:
         return []
     has_weight = any("weight" in data for _, _, data in graph.edges(data=True))
-    communities = nx.algorithms.community.greedy_modularity_communities(graph, weight="weight" if has_weight else None)
+    weight = "weight" if has_weight else None
+    if community_method(graph) == "louvain":
+        communities = nx.algorithms.community.louvain_communities(graph, weight=weight, seed=seed)
+    else:
+        communities = nx.algorithms.community.greedy_modularity_communities(graph, weight=weight)
     return sorted(communities, key=len, reverse=True)
 
 
-def compute_node_communities(graph: nx.Graph) -> pd.DataFrame:
+def compute_node_communities(graph: nx.Graph, seed: int = 0) -> pd.DataFrame:
     """Each node's community (0 = largest) from detect_communities(), the same partition the
     modularity metric scores, so it can be checked against known groups in the data."""
     records = [
         {"node": node, "community": index, "community_size": len(members)}
-        for index, members in enumerate(detect_communities(graph))
+        for index, members in enumerate(detect_communities(graph, seed=seed))
         for node in members
     ]
     return pd.DataFrame.from_records(records, columns=["node", "community", "community_size"])
@@ -183,7 +239,7 @@ def compute_node_centrality(graph: nx.Graph) -> pd.DataFrame:
     )
 
 
-def compute_small_world_metrics(graph: nx.Graph, seed: int = 42) -> dict[str, float]:
+def compute_small_world_metrics(graph: nx.Graph, seed: int = 42, max_nodes: int | None = None) -> dict[str, float]:
     """Compute the small-world sigma (Humphries & Gurney 2008) and omega (Telesford
     et al. 2011) coefficients, comparing the graph's clustering and path length
     against randomized reference graphs with the same degree sequence.
@@ -207,6 +263,8 @@ def compute_small_world_metrics(graph: nx.Graph, seed: int = 42) -> dict[str, fl
     network_analysis.py rather than always computed.
     """
     empty = {"small_world_sigma": float("nan"), "small_world_omega": float("nan")}
+    if graph.number_of_nodes() > (MAX_SMALL_WORLD_NODES if max_nodes is None else max_nodes):
+        return empty  # rewiring and re-measuring a graph this size many times is infeasible
     if graph.is_directed():
         return empty
     if graph.number_of_nodes() < 4 or graph.number_of_edges() < 2:
@@ -317,7 +375,7 @@ def attribute_mixing(
         groups, codes = np.unique(np.asarray(raw, dtype=object).astype(str), return_inverse=True)
         observed, same, expected = _mixing_statistics(codes, sources, targets, len(groups))
         null = [_mixing_statistics(rng.permutation(codes), sources, targets, len(groups))[0] for _ in range(permutations)]
-        community_of = {node: i for i, members in enumerate(detect_communities(graph)) for node in members}
+        community_of = {node: i for i, members in enumerate(detect_communities(graph, seed=seed)) for node in members}
         result.update({
             "n_groups": len(groups), "assortativity": observed, "same_group_tie_fraction": same,
             "expected_same_group_fraction": expected,
