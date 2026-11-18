@@ -17,6 +17,7 @@ nodes.csv and gprops.csv in a zip; the zips are cached under data/external/netzs
 
 Output, under data/external/ (not committed; cite the papers above when you use the data):
 - celegans_edges.csv, power_grid_edges.csv, dolphins_edges.csv: source, target (undirected)
+- dolphins_nodes.csv: node, label (the dolphin's name, e.g. SN100)
 - polblogs_edges.csv: source, target (directed)
 - polblogs_nodes.csv: node, label, leaning (0 = liberal, 1 = conservative, as in the source),
   source (the blog list the entry came from)
@@ -89,6 +90,12 @@ def write_undirected(name: str, output: str) -> None:
     print(f"Wrote {output}: {len(edges)} edges")
 
 
+def write_dolphin_names() -> None:
+    nodes = _read(_download("dolphins"), "nodes.csv").rename(columns={"index": "node"})
+    nodes[["node", "label"]].to_csv(EXTERNAL_DIR / "dolphins_nodes.csv", index=False)
+    print(f"Wrote dolphins_nodes.csv: {len(nodes)} named dolphins")
+
+
 def write_polblogs() -> None:
     archive = _download("polblogs")
     edges = _read(archive, "edges.csv")[["source", "target"]]
@@ -103,6 +110,7 @@ def main() -> None:
     write_undirected("celegansneural", "celegans_edges.csv")
     write_undirected("power", "power_grid_edges.csv")
     write_undirected("dolphins", "dolphins_edges.csv")
+    write_dolphin_names()
     write_polblogs()
 
 

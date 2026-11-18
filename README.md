@@ -371,6 +371,11 @@ against 0.28 and 2.65, with small-world sigma = 1.53. One pre-set criterion fail
 the grid's path length with ln n / ln k, an estimate that's far too low for such a sparse
 network. See [docs/validation/reference_networks.md](docs/validation/reference_networks.md).
 
+`tests/test_dolphin_validation.py` checks the `animal_social_network` profile on Lusseau's
+Doubtful Sound dolphins (same fetch script). Size, degree assortativity (−0.044) and the main
+broker (SN100) match Lusseau & Newman (2004). Modularity is 0.496, just inside the 0.52 ± 0.03
+of Newman & Girvan (2004). See [docs/validation/dolphins.md](docs/validation/dolphins.md).
+
 ## Literature base
 
 `papers/references.bib` contains a curated bibliography covering:
