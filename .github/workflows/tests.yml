@@ -23,23 +23,80 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
 
-      # The real datasets aren't committed (licensing), so download them once
-      # (~18 MB) and keep them in the Actions cache. A new download happens only
-      # when a fetch script changes.
-      - name: Restore real-data cache
+      # The real datasets aren't committed (licensing), so each is downloaded once and kept
+      # in its own Actions cache entry, keyed on its own fetch script: changing or adding one
+      # script re-downloads only that dataset. Only the CSVs the tests read are cached.
+      # Downloads are retried 3 times, 30 s apart, since data servers sometimes return
+      # transient errors (e.g. PhysioNet's 502s).
+      # Not in CI on purpose: roadNet-CA (slow), WESAD (manual licensed download) and
+      # ds004504 resting EEG (~2 GB); their tests are skipped and listed by -rs.
+      - name: Restore fantasia data
+        id: cache-fantasia
         uses: actions/cache@v4
         with:
-          path: data/external
-          key: real-data-${{ hashFiles('data/fetch_*.py') }}
-      - name: Fetch real data (if not cached)
+          path: |
+            data/external/fantasia_rr.csv
+          key: data-fantasia-${{ hashFiles('data/fetch_fantasia.py') }}
+      - name: Restore gait data
+        id: cache-gait
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/external/gait_aging.csv
+            data/external/gait_ndd.csv
+          key: data-gait-${{ hashFiles('data/fetch_gait.py') }}
+      - name: Restore eeg-eyes data
+        id: cache-eeg-eyes
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/external/eeg_eyes.csv
+          key: data-eeg-eyes-${{ hashFiles('data/fetch_eeg_eyes.py') }}
+      - name: Restore ghcn data
+        id: cache-ghcn
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/external/ghcn_tmax_anomaly.csv
+          key: data-ghcn-${{ hashFiles('data/fetch_ghcn_temperature.py') }}
+      - name: Restore population data
+        id: cache-population
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/external/lynx.csv
+          key: data-population-${{ hashFiles('data/fetch_population_series.py') }}
+      - name: Restore social-networks data
+        id: cache-social-networks
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/external/karate_club_edges.csv
+            data/external/karate_club_factions.csv
+            data/external/ca_grqc_edges.csv
+          key: data-social-networks-${{ hashFiles('data/fetch_social_networks.py') }}
+      - name: Restore reference-networks data
+        id: cache-reference-networks
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/external/celegans_edges.csv
+            data/external/power_grid_edges.csv
+            data/external/dolphins_edges.csv
+            data/external/dolphins_nodes.csv
+            data/external/polblogs_edges.csv
+            data/external/polblogs_nodes.csv
+          key: data-reference-networks-${{ hashFiles('data/fetch_reference_networks.py') }}
+      - name: Fetch any data not restored from the cache
         run: |
-          [ -f data/external/fantasia_rr.csv ]        || python data/fetch_fantasia.py
-          [ -f data/external/eeg_eyes.csv ]           || python data/fetch_eeg_eyes.py
-          [ -f data/external/gait_ndd.csv ]           || python data/fetch_gait.py
-          [ -f data/external/ghcn_tmax_anomaly.csv ]  || python data/fetch_ghcn_temperature.py
-          [ -f data/external/lynx.csv ]               || python data/fetch_population_series.py
-          [ -f data/external/ca_grqc_edges.csv ]      || python data/fetch_social_networks.py
-          [ -f data/external/power_grid_edges.csv ]   || python data/fetch_reference_networks.py
+          retry() { for attempt in 1 2 3; do "$@" && return 0; echo "attempt $attempt failed; retrying in 30 s"; sleep 30; done; return 1; }
+          [ "${{ steps.cache-fantasia.outputs.cache-hit }}" = "true" ] || retry python data/fetch_fantasia.py
+          [ "${{ steps.cache-gait.outputs.cache-hit }}" = "true" ] || retry python data/fetch_gait.py
+          [ "${{ steps.cache-eeg-eyes.outputs.cache-hit }}" = "true" ] || retry python data/fetch_eeg_eyes.py
+          [ "${{ steps.cache-ghcn.outputs.cache-hit }}" = "true" ] || retry python data/fetch_ghcn_temperature.py
+          [ "${{ steps.cache-population.outputs.cache-hit }}" = "true" ] || retry python data/fetch_population_series.py
+          [ "${{ steps.cache-social-networks.outputs.cache-hit }}" = "true" ] || retry python data/fetch_social_networks.py
+          [ "${{ steps.cache-reference-networks.outputs.cache-hit }}" = "true" ] || retry python data/fetch_reference_networks.py
 
       # -rs lists every skipped test and why, so a missing dataset is visible.
       - name: Run tests
