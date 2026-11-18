@@ -333,6 +333,21 @@ matches (0.381), but the detected communities misassign 2 members against the kn
 one more than the published methods. See
 [docs/validation/social_networks.md](docs/validation/social_networks.md).
 
+`tests/test_reference_network_validation.py` checks the `neuronal_network` and `network`
+profiles on the two small-world networks of Watts & Strogatz (1998), the *C. elegans* neural
+network and the US western power grid:
+
+```bash
+python data/fetch_reference_networks.py   # ~0.2 MB from networks.skewed.de -> data/external/
+python -m pytest -q tests/test_reference_network_validation.py
+```
+
+The power grid matches the published node and edge counts exactly, with C = 0.080 and
+L = 18.99 against 18.7. *C. elegans* (Newman's 297-neuron version) gives C = 0.29 and L = 2.46
+against 0.28 and 2.65, with small-world sigma = 1.53. One pre-set criterion fails: it compared
+the grid's path length with ln n / ln k, an estimate that's far too low for such a sparse
+network. See [docs/validation/reference_networks.md](docs/validation/reference_networks.md).
+
 ## Literature base
 
 `papers/references.bib` contains a curated bibliography covering:
