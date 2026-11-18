@@ -418,6 +418,13 @@ The dominant period is 9.5 years, matching the ten-year cycle of Elton & Nichols
 carries 52% of the variance, against 8% in shuffled copies (p = 0.005). See
 [docs/validation/lynx.md](docs/validation/lynx.md).
 
+`tests/test_eeg_alpha_lrtc_validation.py` checks the `eeg_oscillations` profile (band-pass to alpha,
+then the amplitude envelope) on long eyes-closed EEG from OpenNeuro ds004504. In 29 healthy adults the
+alpha envelope's DFA exponent is 0.69 (published 0.68; Linkenkaer-Hansen et al., 2001), against 0.50 for
+shuffled envelopes. In Alzheimer's disease it's lower, 0.665 vs 0.704, matching Montez et al. (2009) in
+direction but not significant (p = 0.07). About 2 GB to download (`python data/fetch_resting_eeg.py`), so
+CI skips it. See [docs/validation/eeg_alpha_lrtc.md](docs/validation/eeg_alpha_lrtc.md).
+
 `tests/test_neural_activity_synthetic.py` checks the `neural_activity` profile on simulated
 calcium imaging, where the answer is known by construction. Correlated firing stands out from its
 shuffles, and calcium smoothing lowers sample entropy as expected. But the indicator's smoothing
