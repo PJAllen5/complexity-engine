@@ -88,6 +88,13 @@ behaviour, now reported):
 windows, since a single missing day splits a record. `max_joined_gap: N` now joins gaps of at
 most N missing samples under `segment`. See [gap_handling.md](../validation/gap_handling.md).
 
+*Implemented in PR 3:* durations need a time column of dates or timestamps. A plain numeric time column
+has no known unit, so a duration there is an error, and the engine doesn't guess. Each unit converts durations at its own
+interval, rounded to whole samples. The `sampling_interval` declaration from item 1 and a
+profile-level override of the irregular threshold are not implemented yet, since no dataset has
+needed them. The climate profile's switch to `30D`/`3000D` gives identical exponents on all
+18 GHCN stations.
+
 **4. Time-unit scales.** With `axis: time`, `metric_parameters` scales may be durations:
 `dfa_exponent: {min_scale: 30D, max_scale: 3000D, order: 2}`. They're converted to samples
 using the nominal interval, and the report prints both (`30D = 30 samples at 1D`). A bare

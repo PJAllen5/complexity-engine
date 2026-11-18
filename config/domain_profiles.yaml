@@ -113,14 +113,19 @@ climate_temperature:
   analysis_question: Do daily temperature anomalies show long-range power-law persistence, and is it stronger where the ocean's heat capacity couples into the atmosphere (islands) than over the continents?
   recommended_metrics:
     - dfa_exponent
+  # Scales are durations, converted to samples at each station's sampling interval
+  # (30D = 30 samples for daily data), so the profile means the same thing on other sampling rates.
+  axis: time
   metric_parameters:
-    # Windows in days, starting well above the ~10-day weather-regime crossover and ending
-    # where the shortest records still hold four windows. DFA2 removes linear trends in the
-    # anomalies, such as urban warming, which would otherwise inflate the exponent.
+    # Windows starting well above the ~10-day weather-regime crossover and ending where the
+    # shortest records still hold four windows. DFA2 removes linear trends in the anomalies,
+    # such as urban warming, which would otherwise inflate the exponent.
     dfa_exponent:
-      min_scale: 30
-      max_scale: 3000
+      min_scale: 30D
+      max_scale: 3000D
       order: 2
+  units:
+    tmax_anomaly: degC
   # Records have gaps from a day to over a decade. They're joined (the default gap_policy):
   # temperature anomalies are positively correlated, and joining vs. segment-aware DFA
   # agreed within ~0.01 per station (docs/validation/gap_handling.md).

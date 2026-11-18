@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +13,28 @@ from typing import Any
 # How time-series metrics treat gaps in a recording (see docs/design/time-axis-and-node-attributes.md):
 # join them (consecutive samples), compute within gap-free segments, or exclude low-coverage units.
 GAP_POLICIES = ("join", "segment", "exclude")
+
+# What metric scales count: samples (the default; e.g. heartbeats for HRV), or time, where
+# scales may be durations and irregularly sampled units aren't computed.
+AXES = ("samples", "time")
+
+# Metric parameters that are window sizes, and so may be given as durations under axis: time.
+DURATION_PARAMETERS = ("min_scale", "max_scale")
+
+_DURATION_UNITS = {"s": 1, "min": 60, "h": 3_600, "D": 86_400, "W": 604_800}
+_DURATION_PATTERN = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(s|min|h|D|W)\s*$")
+
+
+def parse_duration(value: Any) -> float | None:
+    """Seconds in a duration such as "30D", "12h", "15min", "2W" or "0.5s", or None if
+    value isn't a duration string. Units are case-sensitive, matching the sampling report
+    ("D" is days; "min" is minutes, so "m" is never ambiguous with months)."""
+    if not isinstance(value, str):
+        return None
+    match = _DURATION_PATTERN.match(value)
+    if match is None:
+        return None
+    return float(match.group(1)) * _DURATION_UNITS[match.group(2)]
 
 
 @dataclass
@@ -27,6 +50,11 @@ class DomainProfile:
     gap_policy: str = "join"
     min_coverage: float = 0.8
     max_joined_gap: int = 0
+    axis: str = "samples"
+    units: dict[str, str] = field(default_factory=dict)
+
+    def has_duration_parameters(self) -> bool:
+        return any(isinstance(v, str) for params in self.metric_parameters.values() for v in params.values())
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any], key: str | None = None) -> "DomainProfile":
@@ -57,6 +85,38 @@ class DomainProfile:
                 f"Domain profile '{normalized_name}': max_joined_gap must be a non-negative whole number of "
                 f"missing samples, got {max_joined_gap!r}."
             )
+        axis = str(data.get("axis", "samples")).strip().lower()
+        if axis not in AXES:
+            raise ValueError(
+                f"Domain profile '{normalized_name}': axis must be one of {', '.join(AXES)}, got '{axis}'."
+            )
+        for metric, parameters in metric_parameters.items():
+            for parameter, value in parameters.items():
+                if not isinstance(value, str):
+                    continue
+                where = f"Domain profile '{normalized_name}': metric_parameters {metric}.{parameter}"
+                if parameter not in DURATION_PARAMETERS:
+                    raise ValueError(
+                        f"{where} is '{value}', but only {', '.join(DURATION_PARAMETERS)} may be given as text "
+                        "(a duration)."
+                    )
+                seconds = parse_duration(value)
+                if seconds is None or seconds <= 0:
+                    raise ValueError(
+                        f"{where} is '{value}', which isn't a positive duration; use a number and one of "
+                        f"{', '.join(_DURATION_UNITS)}, e.g. 30D or 12h."
+                    )
+                if axis != "time":
+                    raise ValueError(
+                        f"{where} is the duration '{value}', but the profile's axis is '{axis}', where scales "
+                        "count samples. Set axis: time, or give the scale as a whole number of samples."
+                    )
+        units = data.get("units") or {}
+        if not isinstance(units, dict) or not all(isinstance(v, str) and v.strip() for v in units.values()):
+            raise ValueError(
+                f"Domain profile '{normalized_name}': units must map column names to unit labels, "
+                "e.g. {tmax_anomaly: degC}."
+            )
         return cls(
             name=normalized_name,
             description=str(data.get("description", "")),
@@ -69,6 +129,8 @@ class DomainProfile:
             gap_policy=gap_policy,
             min_coverage=min_coverage,
             max_joined_gap=max_joined_gap,
+            axis=axis,
+            units={str(k): v.strip() for k, v in units.items()},
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -84,6 +146,8 @@ class DomainProfile:
             "gap_policy": self.gap_policy,
             "min_coverage": self.min_coverage,
             "max_joined_gap": self.max_joined_gap,
+            "axis": self.axis,
+            "units": dict(self.units),
         }
 
 
