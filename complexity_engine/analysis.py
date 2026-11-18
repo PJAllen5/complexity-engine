@@ -29,6 +29,7 @@ from .metrics import (
     metric_parameter_names,
     metric_settings,
     mutual_information,
+    surrogate_test,
 )
 from .plots import plot_complexity_metrics, plot_condition_comparison, plot_mutual_information_heatmap
 from .report_export import export_html_report
@@ -537,6 +538,7 @@ def unit_complexity_summary(
     gap_policy: str = "join",
     max_joined_gap: int = 0,
     axis: str = "samples",
+    surrogates: Mapping[str, Any] | None = None,
 ) -> pd.DataFrame:
     """Compute complexity metrics separately within each recording unit of each condition.
 
@@ -550,6 +552,11 @@ def unit_complexity_summary(
     samples at each unit's own sampling interval, and irregularly sampled units (spacing_cv
     over IRREGULAR_SPACING_CV) get NaN metrics, with the reason in not_computed, since every
     metric here assumes an even time grid.
+
+    With surrogates ({type, count, seed}), each metric is also computed on `count` surrogates
+    of each unit (metrics.surrogate_test), adding <metric>_surrogate_mean and
+    <metric>_surrogate_p. Surrogates are seeded from (seed, unit index, metric index), so the
+    same data and profile always give the same values.
     """
     has_durations = any(
         parse_duration(v) is not None for params in (metric_parameters or {}).values() for v in params.values()
@@ -569,7 +576,7 @@ def unit_complexity_summary(
     selected = tuple(metrics) if metrics else DEFAULT_METRICS
     records = []
     unit_series = _iter_unit_series(df, signal_col, condition_col, unit_cols, time_col, gap_policy, max_joined_gap)
-    for condition, unit_keys, values, times in unit_series:
+    for unit_index, (condition, unit_keys, values, times) in enumerate(unit_series):
         segmented = isinstance(values, Segments)
         record = {
             "condition": condition,
@@ -592,6 +599,19 @@ def unit_complexity_summary(
             record.update({name: np.nan for name in selected})
         else:
             record.update(compute_complexity_metrics(values, metrics=metrics, parameters=parameters))
+        if surrogates:
+            for metric_index, metric in enumerate(selected):
+                rng = np.random.default_rng([int(surrogates["seed"]), unit_index, metric_index])
+                result = (
+                    {"surrogate_mean": np.nan, "surrogate_p": np.nan}
+                    if not_computed
+                    else surrogate_test(
+                        values, metric, record[metric], (parameters or {}).get(metric),
+                        kind=surrogates["type"], count=int(surrogates["count"]), rng=rng,
+                    )
+                )
+                record[f"{metric}_surrogate_mean"] = result["surrogate_mean"]
+                record[f"{metric}_surrogate_p"] = result["surrogate_p"]
         if axis == "time":
             record["not_computed"] = not_computed
         records.append(record)
@@ -633,6 +653,11 @@ def condition_complexity_summary(
                 "n_units": int(units.shape[0]),
                 **descriptive_stats(group[signal_col].to_numpy(dtype=float)),
                 **{metric: float(units[metric].mean()) for metric in metric_cols},
+                **{
+                    f"{metric}_surrogate_mean": float(units[f"{metric}_surrogate_mean"].mean())
+                    for metric in metric_cols
+                    if f"{metric}_surrogate_mean" in units.columns
+                },
             }
         )
     return pd.DataFrame.from_records(records)
@@ -784,6 +809,37 @@ def _unit_method_note(unit_complexity: pd.DataFrame, unit_cols: Sequence[str], t
         f"{length_text}), {order}, then averaged across units per condition (n_units). "
         "Per-unit values are in complexity_by_unit.csv."
     )
+
+
+def _surrogate_lines(unit_complexity: pd.DataFrame, metrics: Sequence[str], surrogates: Mapping[str, Any] | None) -> list[str]:
+    """How each metric compares with its surrogate baseline, per signal and condition."""
+    if not surrogates or unit_complexity.empty:
+        return []
+    kind, count = surrogates["type"], int(surrogates["count"])
+    what = (
+        "shuffled copies (same values, temporal order destroyed)"
+        if kind == "shuffle"
+        else "phase-randomized copies (same power spectrum and linear autocorrelation, nothing else)"
+    )
+    lines = [
+        "## Surrogate baselines",
+        f"Each metric was recomputed on {count} {what} of every recording (seed {surrogates['seed']}). "
+        f"p is two-sided and empirical, so the smallest possible value is {1 / (count + 1):.3f}. Per-recording "
+        "values are the *_surrogate_mean and *_surrogate_p columns of complexity_by_unit.csv.",
+        "",
+    ]
+    for (signal, condition), rows in unit_complexity.groupby(["signal", "condition"], sort=True):
+        for metric in metrics:
+            p_col = f"{metric}_surrogate_p"
+            if p_col not in rows.columns:
+                continue
+            tested = rows[p_col].dropna()
+            observed, baseline = rows[metric].mean(), rows[f"{metric}_surrogate_mean"].mean()
+            lines.append(
+                f"- {signal}, {condition}, {metric}: mean {observed:.3f} vs surrogate {baseline:.3f}; "
+                f"{int((tested < 0.05).sum())} of {len(tested)} recording(s) differ at p < 0.05."
+            )
+    return [*lines, ""]
 
 
 def _undefined_metric_lines(unit_complexity: pd.DataFrame, metrics: Sequence[str]) -> list[str]:
@@ -1012,6 +1068,7 @@ def analyze_dataset(
             gap_policy=gap_policy,
             max_joined_gap=domain_profile.max_joined_gap,
             axis=domain_profile.axis,
+            surrogates=domain_profile.surrogates,
         )
         unit_complexity_frames.append(unit_complexity)
         complexity_frames.append(
@@ -1129,6 +1186,11 @@ def analyze_dataset(
     report_lines.extend(_as_code_block(complexity.to_string(index=False)))
     report_lines.extend(
         _undefined_metric_lines(unit_complexity, domain_profile.recommended_metrics or list(DEFAULT_METRICS))
+    )
+    report_lines.extend(
+        _surrogate_lines(
+            unit_complexity, domain_profile.recommended_metrics or list(DEFAULT_METRICS), domain_profile.surrogates
+        )
     )
     if not significance.empty:
         report_lines.append("## Statistical significance")

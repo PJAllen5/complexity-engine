@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .metrics import SURROGATE_TYPES
+
 
 # How time-series metrics treat gaps in a recording (see docs/design/time-axis-and-node-attributes.md):
 # join them (consecutive samples), compute within gap-free segments, or exclude low-coverage units.
@@ -20,6 +22,9 @@ AXES = ("samples", "time")
 
 # Metric parameters that are window sizes, and so may be given as durations under axis: time.
 DURATION_PARAMETERS = ("min_scale", "max_scale")
+
+# Surrogate baselines (see metrics.surrogate_test): defaults for a profile's `surrogates`.
+SURROGATE_DEFAULTS = {"type": "shuffle", "count": 200, "seed": 0}
 
 _DURATION_UNITS = {"s": 1, "min": 60, "h": 3_600, "D": 86_400, "W": 604_800}
 _DURATION_PATTERN = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(s|min|h|D|W)\s*$")
@@ -52,6 +57,7 @@ class DomainProfile:
     max_joined_gap: int = 0
     axis: str = "samples"
     units: dict[str, str] = field(default_factory=dict)
+    surrogates: dict[str, Any] | None = None
 
     def has_duration_parameters(self) -> bool:
         return any(isinstance(v, str) for params in self.metric_parameters.values() for v in params.values())
@@ -117,6 +123,30 @@ class DomainProfile:
                 f"Domain profile '{normalized_name}': units must map column names to unit labels, "
                 "e.g. {tmax_anomaly: degC}."
             )
+        surrogates = data.get("surrogates")
+        if surrogates is not None:
+            if surrogates is True:
+                surrogates = {}
+            if not isinstance(surrogates, dict) or set(surrogates) - set(SURROGATE_DEFAULTS):
+                raise ValueError(
+                    f"Domain profile '{normalized_name}': surrogates must be a mapping with any of "
+                    f"{', '.join(SURROGATE_DEFAULTS)}, e.g. {{type: shuffle, count: 200}}."
+                )
+            surrogates = {**SURROGATE_DEFAULTS, **surrogates}
+            surrogates["type"] = str(surrogates["type"]).strip().lower()
+            if surrogates["type"] not in SURROGATE_TYPES:
+                raise ValueError(
+                    f"Domain profile '{normalized_name}': surrogates type must be one of "
+                    f"{', '.join(SURROGATE_TYPES)}, got '{surrogates['type']}'."
+                )
+            for key, minimum in (("count", 19), ("seed", 0)):
+                value = surrogates[key]
+                if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+                    raise ValueError(
+                        f"Domain profile '{normalized_name}': surrogates {key} must be a whole number of at "
+                        f"least {minimum}, got {value!r}"
+                        + (" (with fewer than 19 surrogates, p can never reach 0.05)." if key == "count" else ".")
+                    )
         return cls(
             name=normalized_name,
             description=str(data.get("description", "")),
@@ -131,6 +161,7 @@ class DomainProfile:
             max_joined_gap=max_joined_gap,
             axis=axis,
             units={str(k): v.strip() for k, v in units.items()},
+            surrogates=surrogates,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -148,6 +179,7 @@ class DomainProfile:
             "max_joined_gap": self.max_joined_gap,
             "axis": self.axis,
             "units": dict(self.units),
+            "surrogates": dict(self.surrogates) if self.surrogates else None,
         }
 
 

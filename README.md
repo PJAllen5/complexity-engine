@@ -106,6 +106,16 @@ units:
   tmax_anomaly: degC
 ```
 
+A profile can ask for surrogate baselines, so a metric is never quoted without its null:
+`surrogates: {type: shuffle, count: 200, seed: 0}` (defaults shown). Each metric is recomputed
+on `count` surrogates of every recording. With `shuffle`, the copies keep the same values in
+random order, so the test asks whether there is any temporal structure. With `phase`, the copies keep the power
+spectrum and linear autocorrelation but nothing else (Theiler et al., 1992), so the test asks
+whether there is structure beyond linear correlation. `complexity_by_unit.csv` gains
+`<metric>_surrogate_mean` and a two-sided empirical `<metric>_surrogate_p`, and the report adds
+a "Surrogate baselines" section. Surrogates are off unless a profile sets them, since they multiply
+the metric computation time by `count`.
+
 ## Network pipeline: what it does today
 
 For data that's naturally shaped as a graph (nodes and edges) rather than parallel time
