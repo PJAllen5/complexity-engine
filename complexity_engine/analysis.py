@@ -33,6 +33,7 @@ from .metrics import (
 )
 from .plots import plot_complexity_metrics, plot_condition_comparison, plot_mutual_information_heatmap
 from .report_export import export_html_report
+from .transforms import apply_steps, describe, needs_sampling_rate
 
 _SIGNIFICANCE_ALPHA = 0.05
 
@@ -767,6 +768,77 @@ def condition_cross_signal_summary(
     return pd.DataFrame.from_records(records)
 
 
+def apply_signal_transforms(
+    df: pd.DataFrame,
+    transforms: Mapping[str, Mapping[str, Any]],
+    selected_signals: Sequence[str],
+    condition_col: str = "condition",
+    unit_cols: Sequence[str] = (),
+    time_col: str | None = None,
+    sampling_interval: str | None = None,
+) -> tuple[pd.DataFrame, list[str], dict[str, Any]]:
+    """Apply a profile's transforms (complexity_engine.transforms) within each recording unit,
+    in time order, for every transform whose source column is selected.
+
+    Each selected column with transforms is replaced, in the signals analyzed, by the signals
+    made from it. Rows where a derived signal is undefined (the first sample after diff or
+    log_return, or a recording too short to band-pass) are dropped and counted. bandpass uses
+    each unit's sampling rate from a date/time column, else the profile's sampling_interval.
+    Returns (data, signals to analyze, {"applied": {signal: (source, steps)}, "rows_dropped": n}).
+    """
+    applied = {name: spec for name, spec in transforms.items() if spec["from"] in selected_signals}
+    if not applied:
+        return df, list(selected_signals), {"applied": {}, "rows_dropped": 0}
+    declared = parse_duration(sampling_interval) if sampling_interval else None
+    is_datetime = time_col is not None and pd.api.types.is_datetime64_any_dtype(_time_sort_key(df[time_col]))
+    if any(needs_sampling_rate(spec["steps"]) for spec in applied.values()) and not (is_datetime or declared):
+        raise ValueError(
+            "A bandpass transform needs the sampling rate: give the data a date/time column, or set the "
+            "profile's sampling_interval (e.g. 0.00625s for 160 Hz)."
+        )
+    out = df.copy()
+    derived = {name: pd.Series(np.nan, index=out.index) for name in applied}
+    for _, group in out.groupby([condition_col, *unit_cols], dropna=False, sort=False):
+        if time_col is not None:
+            group = group.sort_values(time_col, key=_time_sort_key, kind="stable")
+        rate = None
+        if is_datetime:
+            interval = _spacing(np.sort(_numeric_times(group[time_col]).to_numpy(dtype=float)))[0]
+            rate = 1.0 / interval if np.isfinite(interval) and interval > 0 else None
+        elif declared:
+            rate = 1.0 / declared
+        for name, spec in applied.items():
+            derived[name].loc[group.index] = apply_steps(group[spec["from"]].to_numpy(dtype=float), spec["steps"], rate)
+    for name, values in derived.items():
+        out[name] = values
+    keep = out[list(applied)].notna().all(axis=1)
+    signals = []
+    for signal in selected_signals:
+        made = [name for name, spec in applied.items() if spec["from"] == signal]
+        signals.extend(made or [signal])
+    info = {"applied": {n: (spec["from"], spec["steps"]) for n, spec in applied.items()},
+            "rows_dropped": int((~keep).sum())}
+    return out[keep], list(dict.fromkeys(signals)), info
+
+
+def _transform_lines(info: Mapping[str, Any], sampling_interval: str | None) -> list[str]:
+    if not info["applied"]:
+        return []
+    lines = ["## Signal transforms",
+             "Applied within each recording, in time order, before any summary or metric:", ""]
+    for name, (source, steps) in info["applied"].items():
+        target = "in place" if name == source else f"-> {name}"
+        lines.append(f"- {source} {target}: {describe(steps)}")
+    if info["rows_dropped"]:
+        lines.append(
+            f"- {info['rows_dropped']} row(s) dropped where a transformed signal is undefined (the first sample "
+            "of each recording after diff or log_return, or a recording too short to filter)."
+        )
+    if sampling_interval:
+        lines.append(f"- Sampling interval for filtering: {sampling_interval} (from the profile).")
+    return [*lines, ""]
+
+
 def _unit_intervals(
     df: pd.DataFrame, condition_col: str, unit_cols: Sequence[str], time_col: str | None
 ) -> list[float]:
@@ -1060,6 +1132,12 @@ def analyze_dataset(
         dropped = pd.MultiIndex.from_frame(excluded[["condition", *selected_units]].set_axis(keys, axis=1))
         df = df[~pd.MultiIndex.from_frame(df[keys]).isin(dropped)]
         provenance["units_excluded_low_coverage"] = len(excluded)
+    df, selected_signals, transform_info = apply_signal_transforms(
+        df, domain_profile.transforms, selected_signals, condition_col=condition_col, unit_cols=selected_units,
+        time_col=time_col, sampling_interval=domain_profile.sampling_interval,
+    )
+    if transform_info["rows_dropped"]:
+        provenance["rows_dropped_by_transforms"] = transform_info["rows_dropped"]
 
     summary_frames = []
     complexity_frames = []
@@ -1181,8 +1259,9 @@ def analyze_dataset(
         f"- Rows dropped for missing values in {provenance['missing_value_columns_checked']}: "
         f"{provenance['rows_dropped_missing_values']}"
     )
-    report_lines.append(f"- Rows analyzed: {provenance['output_rows']}")
+    report_lines.append(f"- Rows analyzed: {provenance['output_rows'] - transform_info['rows_dropped']}")
     report_lines.append("")
+    report_lines.extend(_transform_lines(transform_info, domain_profile.sampling_interval))
     report_lines.extend(
         _sampling_lines(
             sampling,
@@ -1240,6 +1319,8 @@ def analyze_dataset(
         "complexity_by_unit": unit_complexity,
         "unit_columns": selected_units,
         "time_column": time_col,
+        "transforms_applied": {n: {"from": src, "steps": describe(steps)}
+                               for n, (src, steps) in transform_info["applied"].items()},
         "significance_summary": significance,
         "cross_signal_summary": cross_signal,
         "summary_csv": str(summary_path),

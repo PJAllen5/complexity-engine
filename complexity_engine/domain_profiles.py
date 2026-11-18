@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .metrics import SURROGATE_TYPES
+from .transforms import parse_transforms
 
 
 # How time-series metrics treat gaps in a recording (see docs/design/time-axis-and-node-attributes.md):
@@ -62,6 +63,8 @@ class DomainProfile:
     units: dict[str, str] = field(default_factory=dict)
     surrogates: dict[str, Any] | None = None
     node_attributes: dict[str, dict[str, str]] = field(default_factory=dict)
+    transforms: dict[str, dict[str, Any]] = field(default_factory=dict)
+    sampling_interval: str | None = None
 
     def has_duration_parameters(self) -> bool:
         return any(isinstance(v, str) for params in self.metric_parameters.values() for v in params.values())
@@ -172,6 +175,19 @@ class DomainProfile:
                     f"{', '.join(ATTRIBUTE_KINDS)}, got '{kind}'."
                 )
             node_attributes[str(attribute)] = {"role": str(spec.get("role", "")), "kind": kind}
+        try:
+            transforms = parse_transforms(data.get("transforms") or {})
+        except ValueError as error:
+            raise ValueError(f"Domain profile '{normalized_name}': {error}.") from None
+        sampling_interval = data.get("sampling_interval")
+        if sampling_interval is not None:
+            seconds = parse_duration(str(sampling_interval))
+            if seconds is None or seconds <= 0:
+                raise ValueError(
+                    f"Domain profile '{normalized_name}': sampling_interval must be a positive duration, e.g. "
+                    f"0.00625s for 160 Hz, got {sampling_interval!r}."
+                )
+            sampling_interval = str(sampling_interval).strip()
         return cls(
             name=normalized_name,
             description=str(data.get("description", "")),
@@ -188,6 +204,8 @@ class DomainProfile:
             units={str(k): v.strip() for k, v in units.items()},
             surrogates=surrogates,
             node_attributes=node_attributes,
+            transforms=transforms,
+            sampling_interval=sampling_interval,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -207,6 +225,9 @@ class DomainProfile:
             "units": dict(self.units),
             "surrogates": dict(self.surrogates) if self.surrogates else None,
             "node_attributes": {k: dict(v) for k, v in self.node_attributes.items()},
+            "transforms": {k: {"from": v["from"], "steps": [list(step) for step in v["steps"]]}
+                           for k, v in self.transforms.items()},
+            "sampling_interval": self.sampling_interval,
         }
 
 
