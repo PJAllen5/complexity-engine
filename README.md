@@ -329,6 +329,12 @@ The drop in the stride-interval DFA exponent in Huntington's disease is reproduc
 direction (young 0.81, elderly 0.75), but with 5 subjects per group it's not significant. See
 [docs/validation/gait.md](docs/validation/gait.md).
 
+`tests/test_collective_behavior_synthetic.py` checks the `collective_behavior` profile on the
+Vicsek et al. (1995) flocking model across noise levels. Polarization goes from 0.98 (ordered) to
+0.11 (disordered), and its DFA exponent from about 1 to 0.55. The exponent doesn't clearly peak at
+the transition, though the size of the fluctuations does. See
+[docs/validation/collective_behavior_synthetic.md](docs/validation/collective_behavior_synthetic.md).
+
 `tests/test_ghcn_validation.py` does the same outside biology, on daily maximum temperatures
 from 18 GHCN-Daily stations, with the `climate_temperature` profile:
 
