@@ -306,6 +306,19 @@ elderly. It does not reproduce the published drop in the long-range DFA exponent
 turned out to depend on the window it's fitted over. See
 [docs/validation/fantasia.md](docs/validation/fantasia.md) for the full results.
 
+`tests/test_gait_validation.py` checks the `gait` profile on PhysioNet stride intervals against
+Hausdorff et al. (1997):
+
+```bash
+python data/fetch_gait.py   # ~2 MB of stride files -> data/external/gait_*.csv
+python -m pytest -q tests/test_gait_validation.py
+```
+
+The drop in the stride-interval DFA exponent in Huntington's disease is reproduced (0.90 vs
+0.67, p < 0.001), as is its link to functional capacity (ρ = 0.73). Aging goes in the published
+direction (young 0.81, elderly 0.75), but with 5 subjects per group it's not significant. See
+[docs/validation/gait.md](docs/validation/gait.md).
+
 `tests/test_ghcn_validation.py` does the same outside biology, on daily maximum temperatures
 from 18 GHCN-Daily stations, with the `climate_temperature` profile:
 
