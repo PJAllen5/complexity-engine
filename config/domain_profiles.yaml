@@ -232,6 +232,38 @@ social_network:
     community_nmi: Agreement between the detected communities and a node attribute, from 0 (unrelated) to 1 (the communities are the groups). A high value means the network's cohesive subgroups follow that attribute, as the karate club's communities follow its two factions.
 
 
+population_dynamics:
+  name: population_dynamics
+  description: Regularly sampled counts of an animal or plant population, such as annual trappings, census counts or catch records, focused on population cycles and how regular they are.
+  analysis_question: Does the population cycle at a characteristic period, and how much of its variation does that cycle carry, compared with irregular fluctuation?
+  recommended_metrics:
+    - dominant_period
+    - dominant_power_share
+    - spectral_entropy
+    - sample_entropy
+  # Population records are often only 30-100 samples long. Sample entropy is unreliable
+  # below about 10^m samples (Richman & Moorman, 2000), so shorter records get no value.
+  metric_parameters:
+    sample_entropy:
+      min_samples: 100
+  # Every metric is compared with shuffled copies of the same counts, so a cycle is never
+  # reported without asking whether random order would give it too.
+  surrogates:
+    type: shuffle
+  expected_columns:
+    - count
+    - condition
+    - series_id
+  signal_roles:
+    primary_signal: Population size per sampling interval (usually per year), as a count or an index of abundance, one value per interval.
+    condition: Group being compared, such as region, species or trophic level.
+    covariate: series_id identifies one population's record; a time column gives each value's year.
+  interpretation_rules:
+    dominant_period: Period, in samples (usually years), of the strongest cycle, at most half the record. Some populations cycle with a regular period, such as the roughly ten-year cycle of the Canadian lynx (Elton & Nicholson, 1942). Periods are coarse for short records (a 50-year record can show 10.0 or 12.5 years but nothing between), so compare cycles, not decimals.
+    dominant_power_share: Share of the record's variance carried by the dominant cycle. Near 1 means one cycle dominates; near zero means no single period stands out. Compare it with the surrogate baseline, since a short record of pure noise always has some largest peak.
+    spectral_entropy: How evenly variance spreads across periods. Low values mean a few periods dominate, as in a cycling population; values near 1 mean irregular fluctuation at all periods.
+    sample_entropy: Irregularity from one interval to the next. A cycling population is predictable from its recent values and has low sample entropy. Only computed for records of at least 100 values.
+
 # --- Profiles for data exported by behavetrack (video and microscope tracking) ---------------
 # `behavetrack export-complexity` writes files in exactly these shapes; see that project's README.
 
