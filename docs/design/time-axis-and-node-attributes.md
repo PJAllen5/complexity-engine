@@ -146,6 +146,13 @@ column, with the name configurable via `--node-col`, plus any attribute columns.
 - Edge endpoints missing from the table are kept with empty attributes, and counted.
 - Duplicate node ids are an error.
 
+*Implemented in PR 4:* attributes are set on the graph's nodes and joined onto
+`node_communities.csv` and `node_centrality.csv`. A node table without a condition column
+applies to every condition, and rows for conditions that have no edges are ignored and
+counted. If the table and the edges name the same nodes with different types (7 vs "7"),
+that is an error. Otherwise every node would quietly become an isolate. The profile's
+`node_attributes` (item 3) moves to PR 5, the first PR that uses it.
+
 **2. Attribute mixing table** (`attribute_mixing.csv`). For each attribute named in the
 profile's `node_attributes` (or `--attributes`), per condition:
 
