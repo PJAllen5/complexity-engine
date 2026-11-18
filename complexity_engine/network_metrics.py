@@ -5,7 +5,10 @@ ingestion and reporting layer built on top of this module.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import networkx as nx
+import numpy as np
 import pandas as pd
 
 # Every key compute_network_metrics() can produce, for validating a domain profile's
@@ -217,3 +220,118 @@ def compute_small_world_metrics(graph: nx.Graph, seed: int = 42) -> dict[str, fl
     except nx.NetworkXError:
         return empty
     return {"small_world_sigma": float(sigma), "small_world_omega": float(omega)}
+
+
+# Columns of the attribute-mixing table, one row per attribute (and condition).
+ATTRIBUTE_MIXING_COLUMNS = (
+    "attribute", "kind", "n_nodes", "n_groups", "assortativity", "same_group_tie_fraction",
+    "expected_same_group_fraction", "p_value", "community_nmi",
+)
+
+
+def _mixing_statistics(codes: np.ndarray, sources: np.ndarray, targets: np.ndarray, n_groups: int) -> tuple[float, float, float]:
+    """(assortativity, same-group fraction, expected same-group fraction) for categorical codes.
+
+    Newman's (2003) coefficient r = (sum_i e_ii - sum_i a_i b_i) / (1 - sum_i a_i b_i), where e is
+    the share of tie ends joining group i to group j, a the share of ties leaving each group and b
+    the share arriving. sum_i e_ii is the same-group fraction and sum_i a_i b_i its expectation
+    under random mixing with the same group sizes and degrees.
+    """
+    source_codes, target_codes = codes[sources], codes[targets]
+    same = float(np.mean(source_codes == target_codes))
+    a = np.bincount(source_codes, minlength=n_groups) / source_codes.size
+    b = np.bincount(target_codes, minlength=n_groups) / target_codes.size
+    expected = float(np.sum(a * b))
+    r = (same - expected) / (1.0 - expected) if expected < 1.0 else float("nan")
+    return r, same, expected
+
+
+def _numeric_assortativity(values: np.ndarray, sources: np.ndarray, targets: np.ndarray) -> float:
+    x, y = values[sources], values[targets]
+    if np.std(x) == 0 or np.std(y) == 0:
+        return float("nan")
+    return float(np.corrcoef(x, y)[0, 1])
+
+
+def normalized_mutual_information(labels_a: Sequence, labels_b: Sequence) -> float:
+    """NMI between two labelings of the same items, normalized by the mean of their entropies
+    (Danon et al., 2005): 1 for identical partitions, near 0 for unrelated ones."""
+    _, a = np.unique(np.asarray(labels_a, dtype=object).astype(str), return_inverse=True)
+    _, b = np.unique(np.asarray(labels_b, dtype=object).astype(str), return_inverse=True)
+    joint = np.zeros((a.max() + 1, b.max() + 1))
+    np.add.at(joint, (a, b), 1)
+    joint /= joint.sum()
+    pa, pb = joint.sum(axis=1), joint.sum(axis=0)
+    nonzero = joint > 0
+    mutual = float(np.sum(joint[nonzero] * np.log(joint[nonzero] / np.outer(pa, pb)[nonzero])))
+    entropy = lambda p: float(-np.sum(p[p > 0] * np.log(p[p > 0])))  # noqa: E731
+    mean_entropy = (entropy(pa) + entropy(pb)) / 2
+    return mutual / mean_entropy if mean_entropy > 0 else float("nan")
+
+
+def attribute_mixing(
+    graph: nx.Graph,
+    attribute: str,
+    kind: str = "categorical",
+    permutations: int = 1000,
+    seed: int = 0,
+) -> dict[str, float | str | int]:
+    """How ties mix across a node attribute: assortativity, same-group tie share, a permutation
+    p-value, and agreement between the attribute and the detected communities.
+
+    Only nodes with a value for the attribute, and ties between two such nodes, count;
+    self-loops are left out, since they don't join two nodes. A directed graph uses each tie
+    once, from source to target; an undirected graph uses each tie in both directions.
+
+    - assortativity: Newman's (2003) coefficient, categorical or numeric (Pearson over ties).
+    - same_group_tie_fraction / expected_same_group_fraction (categorical only): the share of
+      ties inside a group, and the share expected if ties ignored the attribute but kept group
+      sizes and degrees.
+    - p_value: two-sided permutation test of assortativity, shuffling the attribute across
+      nodes `permutations` times (seeded): (1 + k) / (1 + permutations).
+    - community_nmi (categorical only): NMI between the attribute and the communities that the
+      modularity metric scores, over attributed nodes.
+    """
+    nodes = [n for n, value in graph.nodes(data=attribute) if value is not None and not _is_missing(value)]
+    result: dict[str, float | str | int] = {
+        "attribute": attribute, "kind": kind, "n_nodes": len(nodes), "n_groups": float("nan"),
+        "assortativity": float("nan"), "same_group_tie_fraction": float("nan"),
+        "expected_same_group_fraction": float("nan"), "p_value": float("nan"), "community_nmi": float("nan"),
+    }
+    index = {node: i for i, node in enumerate(nodes)}
+    pairs = [(index[u], index[v]) for u, v in graph.edges() if u != v and u in index and v in index]
+    if not pairs:
+        return result
+    sources, targets = np.array(pairs).T
+    if not graph.is_directed():
+        sources, targets = np.concatenate([sources, targets]), np.concatenate([targets, sources])
+    raw = [graph.nodes[n][attribute] for n in nodes]
+    rng = np.random.default_rng(seed)
+
+    if kind == "numeric":
+        values = np.asarray(raw, dtype=float)
+        observed = _numeric_assortativity(values, sources, targets)
+        null = [_numeric_assortativity(rng.permutation(values), sources, targets) for _ in range(permutations)]
+        result["assortativity"] = observed
+    else:
+        groups, codes = np.unique(np.asarray(raw, dtype=object).astype(str), return_inverse=True)
+        observed, same, expected = _mixing_statistics(codes, sources, targets, len(groups))
+        null = [_mixing_statistics(rng.permutation(codes), sources, targets, len(groups))[0] for _ in range(permutations)]
+        community_of = {node: i for i, members in enumerate(detect_communities(graph)) for node in members}
+        result.update({
+            "n_groups": len(groups), "assortativity": observed, "same_group_tie_fraction": same,
+            "expected_same_group_fraction": expected,
+            "community_nmi": normalized_mutual_information(codes, [community_of[n] for n in nodes]),
+        })
+    null = np.asarray(null, dtype=float)
+    null = null[np.isfinite(null)]
+    if np.isfinite(observed) and null.size:
+        result["p_value"] = float((1 + np.sum(np.abs(null) >= abs(observed))) / (1 + null.size))
+    return result
+
+
+def _is_missing(value) -> bool:
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False

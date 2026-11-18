@@ -95,6 +95,8 @@ def network_main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--compute-communities", action="store_true", help="Also write each node's detected community (the partition modularity scores) to node_communities.csv.")
     parser.add_argument("--nodes", type=str, default=None, help="Optional node table (CSV/Excel): one row per node, with an id column and attribute columns. Listed nodes with no ties are added as isolates, and attributes are joined onto per-node outputs. An optional condition column gives per-condition nodes.")
     parser.add_argument("--node-col", type=str, default="node", help="Node id column in the --nodes table.")
+    parser.add_argument("--attributes", type=str, default=None, help="Comma-separated node-table columns to measure attribute mixing for (assortativity, same-group tie share, permutation p, community NMI); defaults to the profile's node_attributes. Needs --nodes.")
+    parser.add_argument("--permutations", type=int, default=1000, help="Shuffles of each attribute for the attribute-mixing p-value.")
     parser.add_argument("--random-seed", type=int, default=42, help="Seed for the randomized reference graphs used by --compute-small-world.")
     parser.add_argument("--domain", type=str, default="network", help="Domain profile to apply.")
     parser.add_argument("--domain-config", type=str, default=None, help="Optional path to a YAML or JSON config file containing custom domain profiles.")
@@ -126,6 +128,8 @@ def network_main(argv: Sequence[str] | None = None) -> None:
         domain_config=args.domain_config,
         node_table=args.nodes,
         node_col=args.node_col,
+        attributes=[a.strip() for a in args.attributes.split(",") if a.strip()] if args.attributes else None,
+        permutations=args.permutations,
     )
 
     if result["missing_columns"]:
@@ -143,5 +147,7 @@ def network_main(argv: Sequence[str] | None = None) -> None:
         print(f"Saved node centrality to: {result['centrality_csv']}")
     if result["communities_csv"]:
         print(f"Saved node communities to: {result['communities_csv']}")
+    if result["attribute_mixing_csv"]:
+        print(f"Saved attribute mixing to: {result['attribute_mixing_csv']}")
     print(f"Saved report to: {result['report_md']}")
     print(f"Saved self-contained HTML report to: {result['report_html']}")

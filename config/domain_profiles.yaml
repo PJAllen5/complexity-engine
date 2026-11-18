@@ -216,7 +216,7 @@ social_network:
     weight: Optional tie strength, such as interaction count or number of joint papers; used for clustering and modularity, not for path length.
     condition: Optional label for comparing networks, such as two time periods, groups, or communities.
   interpretation_rules:
-    n_nodes: Number of people or organizations with at least one tie; isolates aren't in an edge list, so they are never counted.
+    n_nodes: Number of people or organizations in the network. An edge list only contains people with at least one tie, so isolated people are counted only when a node table (--nodes) lists them; in surveys, they are often the people of most interest.
     n_edges: Number of distinct ties. Many social datasets record repeated interactions; those collapse into one tie unless a weight column keeps their count.
     mean_degree: Average number of ties per person. Social networks are usually sparse, with a few people holding far more ties than average, so check the degree-distribution plot rather than reading the mean as typical.
     density: Fraction of all possible ties that exist. It falls as a network grows, since each person can only maintain so many ties, so compare density only between networks of similar size.
@@ -227,6 +227,9 @@ social_network:
     n_connected_components: Number of separate pieces. Real social networks usually have one giant component plus many small groups that never connect to it, such as authors who only wrote with each other. Path length covers the giant component only.
     small_world_sigma: Sigma compares clustering and path length against random networks with the same degrees (Humphries & Gurney, 2008); above 1 means small-world structure. It needs a fully connected network, so it is NaN for most real social networks unless the giant component is analyzed on its own.
     small_world_omega: Omega compares the network with both a random and a lattice reference (Telesford et al., 2011); near 0 means small-world, negative lattice-like, positive random-like. Like sigma, it needs a fully connected network.
+    assortativity: Assortativity by a node attribute (Newman, 2003) measures homophily, the tendency of ties to form between similar people (McPherson et al., 2001). It is 1 when every tie stays within a group, 0 when ties ignore the attribute, and negative when ties prefer other groups. Read it with its permutation p-value, since a few large groups can produce a sizeable coefficient by chance in a small network.
+    same_group_tie_fraction: Share of ties that stay within a group, the plainest reading of homophily; compare it with expected_same_group_fraction, what random mixing with the same group sizes and degrees would give. Political blogs, for example, linked within their own side 91% of the time against about half expected (Adamic & Glance, 2005).
+    community_nmi: Agreement between the detected communities and a node attribute, from 0 (unrelated) to 1 (the communities are the groups). A high value means the network's cohesive subgroups follow that attribute, as the karate club's communities follow its two factions.
 
 
 # --- Profiles for data exported by behavetrack (video and microscope tracking) ---------------

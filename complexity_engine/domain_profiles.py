@@ -23,6 +23,9 @@ AXES = ("samples", "time")
 # Metric parameters that are window sizes, and so may be given as durations under axis: time.
 DURATION_PARAMETERS = ("min_scale", "max_scale")
 
+# How a node attribute is compared across ties (see network_metrics.attribute_mixing).
+ATTRIBUTE_KINDS = ("categorical", "numeric")
+
 # Surrogate baselines (see metrics.surrogate_test): defaults for a profile's `surrogates`.
 SURROGATE_DEFAULTS = {"type": "shuffle", "count": 200, "seed": 0}
 
@@ -58,6 +61,7 @@ class DomainProfile:
     axis: str = "samples"
     units: dict[str, str] = field(default_factory=dict)
     surrogates: dict[str, Any] | None = None
+    node_attributes: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def has_duration_parameters(self) -> bool:
         return any(isinstance(v, str) for params in self.metric_parameters.values() for v in params.values())
@@ -147,6 +151,27 @@ class DomainProfile:
                         f"least {minimum}, got {value!r}"
                         + (" (with fewer than 19 surrogates, p can never reach 0.05)." if key == "count" else ".")
                     )
+        node_attributes = {}
+        raw_attributes = data.get("node_attributes") or {}
+        if not isinstance(raw_attributes, dict):
+            raise ValueError(
+                f"Domain profile '{normalized_name}': node_attributes must map attribute names to a role "
+                "description, or to {role: ..., kind: categorical | numeric}."
+            )
+        for attribute, spec in raw_attributes.items():
+            spec = {"role": spec} if isinstance(spec, str) else spec
+            if not isinstance(spec, dict) or set(spec) - {"role", "kind"}:
+                raise ValueError(
+                    f"Domain profile '{normalized_name}': node_attributes.{attribute} must be a role description "
+                    "or a mapping with role and kind."
+                )
+            kind = str(spec.get("kind", "")).strip().lower()
+            if kind and kind not in ATTRIBUTE_KINDS:
+                raise ValueError(
+                    f"Domain profile '{normalized_name}': node_attributes.{attribute} kind must be one of "
+                    f"{', '.join(ATTRIBUTE_KINDS)}, got '{kind}'."
+                )
+            node_attributes[str(attribute)] = {"role": str(spec.get("role", "")), "kind": kind}
         return cls(
             name=normalized_name,
             description=str(data.get("description", "")),
@@ -162,6 +187,7 @@ class DomainProfile:
             axis=axis,
             units={str(k): v.strip() for k, v in units.items()},
             surrogates=surrogates,
+            node_attributes=node_attributes,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -180,6 +206,7 @@ class DomainProfile:
             "axis": self.axis,
             "units": dict(self.units),
             "surrogates": dict(self.surrogates) if self.surrogates else None,
+            "node_attributes": {k: dict(v) for k, v in self.node_attributes.items()},
         }
 
 
