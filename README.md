@@ -367,6 +367,19 @@ The drop in the stride-interval DFA exponent in Huntington's disease is reproduc
 direction (young 0.81, elderly 0.75), but with 5 subjects per group it's not significant. See
 [docs/validation/gait.md](docs/validation/gait.md).
 
+`tests/test_eeg_eyes_validation.py` checks the `cognitive` profile on one-minute resting EEG with
+eyes open and closed (PhysioNet EEGMMIDB, 109 subjects, channel Oz):
+
+```bash
+python data/fetch_eeg_eyes.py   # ~280 MB of EDF, converted and deleted -> data/external/eeg_eyes.csv (~75 MB)
+python -m pytest -q tests/test_eeg_eyes_validation.py
+```
+
+On the raw signals both criteria fail. The recordings are dominated by slow drift below 1 Hz, which
+hides the eyes-closed alpha rise in spectral entropy, although alpha is clearly higher with eyes
+closed in 92% of subjects. A band-passed rerun, with criteria fixed in advance, waits on the
+`transforms` setting. See [docs/validation/eeg_eyes.md](docs/validation/eeg_eyes.md).
+
 `tests/test_collective_behavior_synthetic.py` checks the `collective_behavior` profile on the
 Vicsek et al. (1995) flocking model across noise levels. Polarization goes from 0.98 (ordered) to
 0.11 (disordered), and its DFA exponent from about 1 to 0.55. The exponent doesn't clearly peak at
