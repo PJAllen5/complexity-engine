@@ -263,9 +263,11 @@ neural_activity:
     - spectral_entropy
     - dfa_exponent
   metric_parameters:
-    # Windows are in frames. 16 frames stays above the decay of a calcium transient at
-    # typical imaging rates (about 0.5 to 1.5 s at 10 to 30 frames per second); raise it
-    # for faster imaging or slower indicators.
+    # Windows are in frames. Indicator smoothing raises the exponent until windows are about
+    # 10 decay times long (docs/validation/neural_activity_synthetic.md): with a 0.5 s decay
+    # at 10 frames per second, Poisson spiking reads 0.69 from 16 frames, not 0.5. So read
+    # values from 16 frames as including the indicator's own smoothing, or raise min_scale
+    # to about 10 x (decay time x frame rate) when records are long enough.
     dfa_exponent:
       min_scale: 16
   expected_columns:
