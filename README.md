@@ -115,6 +115,22 @@ units:
   tmax_anomaly: degC
 ```
 
+A profile can derive signals before any metric runs, with `transforms`. Each transform makes
+a signal from a column through steps applied within each recording, in time order: `diff`,
+`log_return`, `abs`, `zscore`, `bandpass(low_hz, high_hz)` (zero-phase Butterworth) and
+`envelope` (Hilbert amplitude). Selecting the source column analyzes the derived signals in
+its place, and the report lists every transform applied. `bandpass` needs the sampling rate,
+taken from a date/time column or from the profile's `sampling_interval`, since the engine
+doesn't guess the unit of a plain-number time column.
+
+```yaml
+transforms:
+  returns: {from: price, steps: [log_return]}
+  volatility: {from: price, steps: [log_return, abs]}
+  eeg_alpha: {from: eeg, steps: ["bandpass(8, 13)", envelope]}
+sampling_interval: 0.00625s   # 160 Hz
+```
+
 A profile can ask for surrogate baselines, so a metric is never quoted without its null:
 `surrogates: {type: shuffle, count: 200, seed: 0}` (defaults shown). Each metric is recomputed
 on `count` surrogates of every recording. With `shuffle`, the copies keep the same values in
