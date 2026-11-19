@@ -1,5 +1,7 @@
 """Complexity engineering MVP package for scientific time-series analysis."""
 
+__version__ = "0.1.0"  # keep in step with pyproject.toml (tests/test_app_runner.py checks)
+
 from .analysis import analyze_dataset, load_dataset, resolve_signal_columns
 from .metrics import (
     compare_conditions,

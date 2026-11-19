@@ -31,7 +31,7 @@ complexity-analysis = "complexity_engine.cli:timeseries_main"
 complexity-network = "complexity_engine.cli:network_main"
 
 [tool.setuptools]
-packages = ["complexity_engine", "complexity_engine.config"]
+packages = ["complexity_engine", "complexity_engine.app", "complexity_engine.config"]
 # The domain profiles stay in config/ at the top of the repository (where people edit them);
 # an installed copy carries them inside the package as complexity_engine/config/.
 package-dir = {"complexity_engine.config" = "config"}
