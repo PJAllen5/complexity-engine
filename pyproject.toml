@@ -24,11 +24,14 @@ dependencies = [
 [project.optional-dependencies]
 # independent reference implementations used only by tests/test_metric_validation.py
 validation = ["antropy", "nolds", "scikit-learn"]
-dev = ["pytest", "antropy", "nolds", "scikit-learn"]
+# the local app (docs/design/app.md): pip install -e ".[app]", then complexity-app
+app = ["streamlit>=1.50", "openpyxl"]
+dev = ["pytest", "antropy", "nolds", "scikit-learn", "streamlit>=1.50", "openpyxl"]
 
 [project.scripts]
 complexity-analysis = "complexity_engine.cli:timeseries_main"
 complexity-network = "complexity_engine.cli:network_main"
+complexity-app = "complexity_engine.app.launch:main"
 
 [tool.setuptools]
 packages = ["complexity_engine", "complexity_engine.app", "complexity_engine.config"]
