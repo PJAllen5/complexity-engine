@@ -19,12 +19,24 @@ import markdown
 _IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
 
 _CSS = """
-body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 60rem;
-       margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #1a1a1a; }
-h1, h2, h3 { border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
-pre { background: #f5f5f5; padding: 0.75rem 1rem; overflow-x: auto; border-radius: 4px; }
+:root { color-scheme: light; --surface: #fcfcfb; --text: #1a1a1a; --muted: #52514e;
+        --rule: #dedcd5; --code: #f1f0ec; --stripe: #f6f5f1; }
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; --surface: #1a1a19; --text: #f0efec; --muted: #c3c2b7;
+          --rule: #3a3936; --code: #262624; --stripe: #222220; }
+}
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 72rem;
+       margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: var(--text); background: var(--surface); }
+h1, h2, h3 { line-height: 1.25; }
+h2 { border-bottom: 1px solid var(--rule); padding-bottom: 0.25rem; margin-top: 2rem; }
+pre { background: var(--code); padding: 0.75rem 1rem; overflow-x: auto; border-radius: 4px; }
 code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.9em; }
-img { max-width: 100%; height: auto; display: block; margin: 1rem 0; }
+table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse;
+        font-size: 0.875rem; margin: 0.5rem 0 1.25rem; font-variant-numeric: tabular-nums; }
+th, td { padding: 0.3rem 0.65rem; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+tbody tr:nth-child(even) { background: var(--stripe); }
+img { max-width: 100%; height: auto; display: block; margin: 1rem 0; background: #fcfcfb; border-radius: 4px; }
 ul { padding-left: 1.5rem; }
 """
 

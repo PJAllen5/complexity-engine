@@ -15,7 +15,7 @@ from pathlib import Path
 import networkx as nx
 import pandas as pd
 
-from .analysis import _as_code_block, _collapse_blank_lines, _describe_data_source, clean_dataset, load_dataset
+from .analysis import _as_table, _collapse_blank_lines, _describe_data_source, clean_dataset, load_dataset
 from .domain_profiles import (
     DomainProfile,
     get_domain_profile,
@@ -199,7 +199,7 @@ def _attribute_mixing_lines(mixing: pd.DataFrame, domain_profile: DomainProfile,
         if domain_profile.interpretation_rules.get(metric):
             lines.append(f"- {metric}: {domain_profile.interpretation_rules[metric]}")
     lines.append("")
-    lines.extend(_as_code_block(mixing.to_string(index=False)))
+    lines.extend(_as_table(mixing))
     return lines
 
 
@@ -459,10 +459,10 @@ def analyze_network(
         )
         report_lines.append("")
     report_lines.append("## Network metrics")
-    report_lines.extend(_as_code_block(metrics_df.to_string(index=False)))
+    report_lines.extend(_as_table(metrics_df))
     if compute_centrality and not centrality_df.empty:
         report_lines.append("## Node centrality")
-        report_lines.extend(_as_code_block(centrality_df.to_string(index=False)))
+        report_lines.extend(_as_table(centrality_df))
     if compute_communities and not communities_df.empty:
         report_lines.append("## Communities")
         report_lines.append(
