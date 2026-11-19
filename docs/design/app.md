@@ -90,8 +90,9 @@ complexity_engine/
 
 ## Files and data in version 1
 
-- Uploads and outputs go to a temporary folder for each run, which is deleted when the next run
-  starts or the app closes. Nothing is kept between sessions. Downloads are created in memory.
+- Uploads and outputs go to a temporary folder for each run, which the runner deletes before
+  returning. Results, including the zip, are held in memory for the session and disappear when the
+  app closes (see Decisions, 3). Nothing is kept between sessions.
 - Streamlit's default upload limit is 200 MB. Version 1 keeps it, and states it on the page. The
   large validation inputs (the 660 MB resting-EEG CSV, the 41 MB road network) are command-line
   jobs for now.
@@ -141,11 +142,14 @@ Three PRs, each under about 500 lines:
    `complexity-app` command, plus a Streamlit smoke test.
 3. **Network page:** edge list, node table, attributes and options.
 
-## Open questions
+## Decisions (2026-11-18)
 
-1. Should the app also offer the bundled example datasets (`physio_example.csv`,
-   `network_example.csv`) as one-click demos, for someone trying it for the first time?
-2. Version 1 deletes outputs when the next run starts. Would you rather keep a list of this
-   session's runs so you can compare them side by side?
-
-Decided 2026-11-18: the zip includes `settings.json` (see "What the user sees", step 7).
+1. **`settings.json` in every zip:** see "What the user sees", step 7.
+2. **One-click demos:** the page offers the bundled examples (`physio_example.csv`,
+   `network_example.csv`) as "Try an example" buttons, so a first-time user sees a full run
+   without their own data.
+3. **Runs are kept for the session:** each finished run stays in a list for the rest of the
+   session, so runs can be compared side by side. They're kept **in memory, not on disk**: the
+   runner deletes each run's temporary folder before returning (implemented in PR 1), and the
+   session's runs disappear when the app closes. This replaces "deleted when the next run
+   starts" in "Files and data in version 1".

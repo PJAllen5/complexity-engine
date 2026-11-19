@@ -12,6 +12,7 @@ from pathlib import Path
 
 from complexity_engine.analysis import analyze_dataset
 from complexity_engine.network_analysis import analyze_network
+from complexity_engine.settings import NetworkSettings, TimeSeriesSettings
 
 # Running from a checkout of the repository (rather than an installed copy) keeps the
 # original defaults: the bundled example data, and results in the repository's outputs/.
@@ -28,8 +29,8 @@ def _output_root() -> Path:
     return _REPO_ROOT / "outputs" if _IN_CHECKOUT else Path.cwd() / "outputs"
 
 
-def timeseries_main(argv: Sequence[str] | None = None) -> None:
-    """`complexity-analysis`: the time-series pipeline (same as run_analysis.py)."""
+def build_timeseries_parser() -> argparse.ArgumentParser:
+    """The complexity-analysis argument parser (also used to check the app offers every option)."""
     parser = argparse.ArgumentParser(description="Analyze scientific time-series and compute complexity metrics.")
     parser.add_argument("--data", type=str, default=_example("physio_example.csv"), required=_example("physio_example.csv") is None, help="Path to the CSV/Excel dataset, or a comma-separated list of files to merge (e.g. multiple session files sharing the same columns).")
     parser.add_argument("--signal-cols", type=str, default=None, help="Comma-separated list of numeric signal columns to analyze.")
@@ -38,28 +39,13 @@ def timeseries_main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--domain", type=str, default="physiology", help="Scientific domain profile to apply: physiology, cognitive, stress, or another configured profile.")
     parser.add_argument("--domain-config", type=str, default=None, help="Optional path to a YAML or JSON config file containing custom domain profiles.")
     parser.add_argument("--output-dir", type=str, default=str(_output_root()), help="Where to write the generated report and CSV outputs.")
-    args = parser.parse_args(argv)
+    return parser
 
-    signal_cols = None
-    if args.signal_cols:
-        signal_cols = [item.strip() for item in args.signal_cols.split(",") if item.strip()]
 
-    unit_cols = None
-    if args.unit_cols is not None:
-        unit_cols = [] if args.unit_cols.strip().lower() == "none" else [item.strip() for item in args.unit_cols.split(",") if item.strip()]
-
-    data_files = [item.strip() for item in args.data.split(",") if item.strip()]
-    data_path = data_files[0] if len(data_files) == 1 else data_files
-
-    result = analyze_dataset(
-        data_path=data_path,
-        signal_cols=signal_cols,
-        condition_col=args.condition_col,
-        output_dir=args.output_dir,
-        domain=args.domain,
-        domain_config=args.domain_config,
-        unit_cols=unit_cols,
-    )
+def timeseries_main(argv: Sequence[str] | None = None) -> None:
+    """`complexity-analysis`: the time-series pipeline (same as run_analysis.py)."""
+    args = build_timeseries_parser().parse_args(argv)
+    result = analyze_dataset(**TimeSeriesSettings.from_cli(args).analysis_kwargs())
 
     print(f"Selected signal columns: {', '.join(result['selected_signals'])}")
     print(f"Recording unit columns: {', '.join(result['unit_columns']) or 'none'}")
@@ -76,8 +62,8 @@ def timeseries_main(argv: Sequence[str] | None = None) -> None:
     print(f"Saved self-contained HTML report to: {result['report_html']}")
 
 
-def network_main(argv: Sequence[str] | None = None) -> None:
-    """`complexity-network`: the network pipeline (same as run_network_analysis.py)."""
+def build_network_parser() -> argparse.ArgumentParser:
+    """The complexity-network argument parser (also used to check the app offers every option)."""
     parser = argparse.ArgumentParser(description="Analyze graph-structured data and compute network-science metrics.")
     parser.add_argument("--data", type=str, default=_example("network_example.csv"), required=_example("network_example.csv") is None, help="Path to a CSV/Excel edge list, or a comma-separated list of files to merge (e.g. multiple session files sharing the same columns).")
     parser.add_argument("--source-col", type=str, default="source", help="Column giving one endpoint of each edge.")
@@ -108,31 +94,13 @@ def network_main(argv: Sequence[str] | None = None) -> None:
         help="Where to write the generated report and CSV outputs. Defaults to a subdirectory distinct from "
         "run_analysis.py's default output dir, since both write a report.md.",
     )
-    args = parser.parse_args(argv)
+    return parser
 
-    data_files = [item.strip() for item in args.data.split(",") if item.strip()]
-    data_path = data_files[0] if len(data_files) == 1 else data_files
 
-    result = analyze_network(
-        data_path=data_path,
-        source_col=args.source_col,
-        target_col=args.target_col,
-        weight_col=args.weight_col or None,
-        condition_col=args.condition_col or None,
-        directed=args.directed,
-        compute_centrality=args.compute_centrality,
-        compute_communities=args.compute_communities,
-        compute_small_world=args.compute_small_world,
-        random_seed=args.random_seed,
-        output_dir=args.output_dir,
-        domain=args.domain,
-        domain_config=args.domain_config,
-        node_table=args.nodes,
-        node_col=args.node_col,
-        attributes=[a.strip() for a in args.attributes.split(",") if a.strip()] if args.attributes else None,
-        permutations=args.permutations,
-        path_sources=args.path_sources,
-    )
+def network_main(argv: Sequence[str] | None = None) -> None:
+    """`complexity-network`: the network pipeline (same as run_network_analysis.py)."""
+    args = build_network_parser().parse_args(argv)
+    result = analyze_network(**NetworkSettings.from_cli(args).analysis_kwargs())
 
     if result["missing_columns"]:
         print(f"Warning: dataset is missing columns expected by the '{args.domain}' domain profile: {', '.join(result['missing_columns'])}")
