@@ -179,6 +179,35 @@ def _metric_settings_lines(domain_profile: DomainProfile, intervals: Sequence[fl
     return lines
 
 
+def _format_cell(value: Any) -> str:
+    """A table cell as readable text: whole numbers without decimals, others to 4 significant
+    figures, missing values as a dash. The CSVs keep full precision."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    if isinstance(value, (bool, np.bool_)):
+        return str(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    if isinstance(value, (float, np.floating)):
+        if float(value).is_integer() and abs(value) < 1e15:
+            return str(int(value))
+        return f"{value:.4g}"
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _as_table(frame: pd.DataFrame) -> list[str]:
+    """A DataFrame as a Markdown table, which the HTML report renders as a real table that
+    scrolls sideways on its own instead of running off the page."""
+    if frame.empty:
+        return ["(no rows)", ""]
+    header = "| " + " | ".join(str(c) for c in frame.columns) + " |"
+    # Numbers right-aligned so their digits line up; text left-aligned.
+    rule = "| " + " | ".join("---:" if pd.api.types.is_numeric_dtype(frame[c]) and not pd.api.types.is_bool_dtype(frame[c])
+                             else ":---" for c in frame.columns) + " |"
+    rows = ["| " + " | ".join(_format_cell(v) for v in row) + " |" for row in frame.itertuples(index=False)]
+    return [header, rule, *rows, ""]
+
+
 def _as_code_block(text: str) -> list[str]:
     """Wrap fixed-width text (e.g. a DataFrame.to_string() dump) in a fenced code
     block, so it renders as a monospace, whitespace-preserved block in Markdown/HTML
@@ -496,7 +525,7 @@ def _sampling_lines(
         lines.append("- Every unit is regularly sampled with no gaps.")
     lines.append("")
     if n_units <= 50:
-        lines.extend(_as_code_block(sampling.to_string(index=False)))
+        lines.extend(_as_table(sampling))
     return lines
 
 
@@ -1212,10 +1241,16 @@ def analyze_dataset(
     plots_dir.mkdir(parents=True, exist_ok=True)
     plot_paths: dict[str, str] = {}
     for signal in selected_signals:
-        comparison_path = plot_condition_comparison(df, signal, condition_col, plots_dir / f"{signal}_condition_comparison.png")
+        comparison_path = plot_condition_comparison(
+            df, signal, condition_col, plots_dir / f"{signal}_condition_comparison.png", unit_cols=selected_units
+        )
         plot_paths[f"{signal}_condition_comparison"] = comparison_path
         metrics_plot_path = plot_complexity_metrics(
-            complexity, signal, domain_profile.recommended_metrics or list(DEFAULT_METRICS), plots_dir / f"{signal}_complexity_metrics.png"
+            complexity,
+            signal,
+            domain_profile.recommended_metrics or list(DEFAULT_METRICS),
+            plots_dir / f"{signal}_complexity_metrics.png",
+            unit_complexity=unit_complexity,
         )
         if metrics_plot_path:
             plot_paths[f"{signal}_complexity_metrics"] = metrics_plot_path
@@ -1274,11 +1309,11 @@ def analyze_dataset(
         )
     )
     report_lines.append("## Condition summary")
-    report_lines.extend(_as_code_block(summary.to_string(index=False)))
+    report_lines.extend(_as_table(summary))
     report_lines.append("## Complexity metrics")
     report_lines.append(_unit_method_note(unit_complexity, selected_units, time_col))
     report_lines.append("")
-    report_lines.extend(_as_code_block(complexity.to_string(index=False)))
+    report_lines.extend(_as_table(complexity))
     report_lines.extend(
         _undefined_metric_lines(
             unit_complexity, domain_profile.recommended_metrics or list(DEFAULT_METRICS), domain_profile.metric_parameters
@@ -1291,10 +1326,10 @@ def analyze_dataset(
     )
     if not significance.empty:
         report_lines.append("## Statistical significance")
-        report_lines.extend(_as_code_block(significance.to_string(index=False)))
+        report_lines.extend(_as_table(significance))
     if not cross_signal.empty:
         report_lines.append("## Cross-signal metrics")
-        report_lines.extend(_as_code_block(cross_signal.to_string(index=False)))
+        report_lines.extend(_as_table(cross_signal))
     if plot_paths:
         report_lines.append("## Visualizations")
         for label, path in plot_paths.items():
