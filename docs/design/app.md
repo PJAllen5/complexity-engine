@@ -120,7 +120,11 @@ than PJ uploads data:
 4. **Limits.** Upload size, run time and memory caps, so one large job can't take the server down.
 5. **Licences.** Some datasets forbid redistribution (WESAD is non-commercial). Results returned to
    the uploader are fine, but the app must never share one user's data or results with another.
-6. **Cost and where to host.** Free tiers (Streamlit Community Cloud, Hugging Face Spaces) are
+6. **Where results and zips live.** Version 1 keeps each session's results, zip included, in
+   memory, which is fine for one local user. Hosted, many sessions with large files would exhaust a
+   server's memory, so decide then between memory, the server's disk or separate file storage, and
+   how retention (1) applies to each. (Agreed 2026-11-18 to revisit at hosting time.)
+7. **Cost and where to host.** Free tiers (Streamlit Community Cloud, Hugging Face Spaces) are
    public by default and have small CPU and memory limits. A small paid server gives control over
    retention and limits. Decide once the expected users and file sizes are known.
 
