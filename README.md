@@ -336,6 +336,30 @@ you install the validation-only dependencies:
 pip install -r requirements-dev.txt
 ```
 
+## Using the app (no command line)
+
+A local web page runs the same analyses without the command line (design:
+[docs/design/app.md](docs/design/app.md)). The time-series page is built; the network page comes next.
+
+```bash
+pip install -e ".[app]"   # adds Streamlit and Excel support
+complexity-app            # opens the page in your browser
+```
+
+1. Upload one or more CSV or Excel files, or click **Try an example**.
+2. Pick a domain profile. Each shows its description and analysis question. You can also upload
+   your own profile file.
+3. Check the signal, condition and recording-unit columns. They start at what the engine would
+   detect on its own.
+4. Click **Run analysis**. You'll see the report, tables and plots, plus downloads of
+   `report.html` and a zip with every result and a `settings.json`. That file records each option
+   and the equivalent `complexity-analysis` command, so the run can be repeated exactly.
+
+Everything stays on your computer. Uploads and outputs are written to a temporary folder that's
+deleted as soon as the run finishes. This session's runs are kept in memory, so you can switch
+between them and compare two side by side, until you close the app. The page gives the same
+results as the CLI: `tests/test_app_runner.py` checks that every CSV is byte-identical.
+
 ## Validation on real data
 
 Checking that the metrics compute the right numbers isn't the same as checking that the
