@@ -42,10 +42,13 @@ EXTERNAL = Path(__file__).resolve().parents[1] / "data" / "external"
 CELEGANS = EXTERNAL / "celegans_edges.csv"
 POWER_GRID = EXTERNAL / "power_grid_edges.csv"
 
-pytestmark = pytest.mark.skipif(
-    not (CELEGANS.exists() and POWER_GRID.exists()),
-    reason="Reference networks not downloaded; run python data/fetch_reference_networks.py",
-)
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(
+        not (CELEGANS.exists() and POWER_GRID.exists()),
+        reason="Reference networks not downloaded; run python data/fetch_reference_networks.py",
+    ),
+]
 
 
 def _metrics(path, domain, tmp_path_factory, small_world=False):

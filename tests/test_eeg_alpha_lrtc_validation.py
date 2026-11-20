@@ -42,8 +42,11 @@ OCCIPITAL = EXTERNAL / "resting_eeg_occipital.csv"
 TEMPOROPARIETAL = EXTERNAL / "resting_eeg_temporoparietal.csv"
 CHANNELS = ["t5", "p3", "pz", "p4", "t6"]
 
-pytestmark = pytest.mark.skipif(not (OCCIPITAL.exists() and TEMPOROPARIETAL.exists()),
-                                reason="Resting EEG not downloaded; run python data/fetch_resting_eeg.py")
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(not (OCCIPITAL.exists() and TEMPOROPARIETAL.exists()),
+                                    reason="Resting EEG not downloaded; run python data/fetch_resting_eeg.py"),
+]
 
 MONTEZ_PROFILE = """alpha_montez:
   name: alpha_montez

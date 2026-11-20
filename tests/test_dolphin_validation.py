@@ -35,10 +35,13 @@ EXTERNAL = Path(__file__).resolve().parents[1] / "data" / "external"
 EDGES = EXTERNAL / "dolphins_edges.csv"
 NAMES = EXTERNAL / "dolphins_nodes.csv"
 
-pytestmark = pytest.mark.skipif(
-    not (EDGES.exists() and NAMES.exists()),
-    reason="Dolphin network not downloaded; run python data/fetch_reference_networks.py",
-)
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(
+        not (EDGES.exists() and NAMES.exists()),
+        reason="Dolphin network not downloaded; run python data/fetch_reference_networks.py",
+    ),
+]
 
 
 @pytest.fixture(scope="module")

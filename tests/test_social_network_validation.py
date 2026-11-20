@@ -31,10 +31,13 @@ KARATE_EDGES = EXTERNAL / "karate_club_edges.csv"
 KARATE_FACTIONS = EXTERNAL / "karate_club_factions.csv"
 GRQC_EDGES = EXTERNAL / "ca_grqc_edges.csv"
 
-pytestmark = pytest.mark.skipif(
-    not (KARATE_EDGES.exists() and KARATE_FACTIONS.exists() and GRQC_EDGES.exists()),
-    reason="Social network data not written; run python data/fetch_social_networks.py",
-)
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(
+        not (KARATE_EDGES.exists() and KARATE_FACTIONS.exists() and GRQC_EDGES.exists()),
+        reason="Social network data not written; run python data/fetch_social_networks.py",
+    ),
+]
 
 
 def _run(path, tmp_path_factory, name, node_table=None):

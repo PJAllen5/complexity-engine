@@ -23,6 +23,8 @@ import pytest
 
 from complexity_engine.metrics import Segments, dfa_exponent
 
+pytestmark = pytest.mark.validation
+
 
 def _fgn(n, hurst, rng):
     """Fractional Gaussian noise by circulant embedding (Davies & Harte, 1987)."""

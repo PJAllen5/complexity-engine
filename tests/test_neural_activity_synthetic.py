@@ -31,6 +31,8 @@ import pytest
 from complexity_engine.analysis import analyze_dataset
 from complexity_engine.metrics import dfa_exponent, sample_entropy, surrogate_test
 
+pytestmark = pytest.mark.validation
+
 N_NEURONS, N_FRAMES = 10, 6000
 
 

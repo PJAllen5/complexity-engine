@@ -26,9 +26,12 @@ from complexity_engine.analysis import analyze_dataset
 
 FANTASIA_CSV = Path(__file__).resolve().parents[1] / "data" / "external" / "fantasia_rr.csv"
 
-pytestmark = pytest.mark.skipif(
-    not FANTASIA_CSV.exists(), reason="Fantasia data not downloaded; run python data/fetch_fantasia.py"
-)
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(
+        not FANTASIA_CSV.exists(), reason="Fantasia data not downloaded; run python data/fetch_fantasia.py"
+    ),
+]
 
 
 @pytest.fixture(scope="module")

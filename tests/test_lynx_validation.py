@@ -25,7 +25,10 @@ from complexity_engine.analysis import analyze_dataset
 
 LYNX = Path(__file__).resolve().parents[1] / "data" / "external" / "lynx.csv"
 
-pytestmark = pytest.mark.skipif(not LYNX.exists(), reason="Lynx data not downloaded; run python data/fetch_population_series.py")
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(not LYNX.exists(), reason="Lynx data not downloaded; run python data/fetch_population_series.py"),
+]
 
 
 @pytest.fixture(scope="module")

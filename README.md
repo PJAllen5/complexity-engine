@@ -324,8 +324,22 @@ python run_analysis.py --unit-cols subject_id,trial
 Run the test suite with:
 
 ```bash
-python -m pytest -q
+python -m pytest -q                        # everything, about 8 minutes
+python -m pytest -q -m "not validation"    # skip the slow validations, about 40 seconds
 ```
+
+Most of the suite's time is the known-answer validations on real and simulated data (marked
+`validation`), which rerun full analyses of datasets such as the California road network
+(about 4.5 minutes alone). Everything else takes well under a minute. A good habit:
+
+- **While working:** run the fast set, or only the files for the part you're changing, e.g.
+  `python -m pytest -q tests/test_app_runner.py tests/test_app_page.py`. `-k network` runs tests
+  with "network" in their name, and `--lf` reruns only the tests that failed last time.
+- **Before merging a change to the engine** (metrics, pipelines, profiles, transforms): run
+  everything, since only the validations show whether a published result still reproduces.
+- **CI runs everything on every PR**, so nothing skipped locally goes unchecked.
+
+`tests/test_markers.py` fails if a new validation file isn't marked, so the fast run stays fast.
 
 A subset of tests (`tests/test_metric_validation.py`) cross-checks the complexity
 metrics against independent reference implementations (`antropy`, `nolds`,

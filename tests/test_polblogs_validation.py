@@ -27,10 +27,13 @@ EXTERNAL = Path(__file__).resolve().parents[1] / "data" / "external"
 EDGES = EXTERNAL / "polblogs_edges.csv"
 NODES = EXTERNAL / "polblogs_nodes.csv"
 
-pytestmark = pytest.mark.skipif(
-    not (EDGES.exists() and NODES.exists()),
-    reason="Political blogs not downloaded; run python data/fetch_reference_networks.py",
-)
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(
+        not (EDGES.exists() and NODES.exists()),
+        reason="Political blogs not downloaded; run python data/fetch_reference_networks.py",
+    ),
+]
 
 
 @pytest.fixture(scope="module")

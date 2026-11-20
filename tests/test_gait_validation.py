@@ -33,9 +33,12 @@ EXTERNAL = Path(__file__).resolve().parents[1] / "data" / "external"
 AGING = EXTERNAL / "gait_aging.csv"
 NDD = EXTERNAL / "gait_ndd.csv"
 
-pytestmark = pytest.mark.skipif(
-    not (AGING.exists() and NDD.exists()), reason="Gait data not downloaded; run python data/fetch_gait.py"
-)
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(
+        not (AGING.exists() and NDD.exists()), reason="Gait data not downloaded; run python data/fetch_gait.py"
+    ),
+]
 
 
 def _run(path, tmp_path_factory):

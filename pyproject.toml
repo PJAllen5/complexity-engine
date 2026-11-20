@@ -44,3 +44,8 @@ package-dir = {"complexity_engine.config" = "config"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A misspelled marker is an error, not a silent no-op.
+addopts = "--strict-markers"
+markers = [
+    "validation: known-answer checks on real or simulated data (slow). Skip with -m 'not validation'; CI runs them on every PR.",
+]
