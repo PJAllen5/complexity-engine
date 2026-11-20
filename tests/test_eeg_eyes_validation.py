@@ -37,7 +37,10 @@ from complexity_engine.metrics import dominant_period
 
 EEG = Path(__file__).resolve().parents[1] / "data" / "external" / "eeg_eyes.csv"
 
-pytestmark = pytest.mark.skipif(not EEG.exists(), reason="EEG not downloaded; run python data/fetch_eeg_eyes.py")
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(not EEG.exists(), reason="EEG not downloaded; run python data/fetch_eeg_eyes.py"),
+]
 
 
 @pytest.fixture(scope="module")

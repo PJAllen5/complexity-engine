@@ -32,7 +32,10 @@ from complexity_engine.network_metrics import sampled_average_path_length
 
 EDGES = Path(__file__).resolve().parents[1] / "data" / "external" / "roadnet_ca_edges.csv"
 
-pytestmark = pytest.mark.skipif(not EDGES.exists(), reason="Road network not downloaded; run python data/fetch_road_network.py")
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(not EDGES.exists(), reason="Road network not downloaded; run python data/fetch_road_network.py"),
+]
 
 
 @pytest.fixture(scope="module")

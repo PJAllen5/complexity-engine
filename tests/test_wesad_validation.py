@@ -32,8 +32,11 @@ from complexity_engine.analysis import analyze_dataset
 EXTERNAL = Path(__file__).resolve().parents[1] / "data" / "external"
 HEART, EDA = EXTERNAL / "wesad_heart.csv", EXTERNAL / "wesad_eda.csv"
 
-pytestmark = pytest.mark.skipif(not (HEART.exists() and EDA.exists()),
-                                reason="WESAD not prepared; see data/fetch_wesad.py")
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(not (HEART.exists() and EDA.exists()),
+                                    reason="WESAD not prepared; see data/fetch_wesad.py"),
+]
 
 
 def _run(path, signal, tmp_path_factory):

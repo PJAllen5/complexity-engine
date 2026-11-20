@@ -25,9 +25,12 @@ from complexity_engine.analysis import analyze_dataset
 
 GHCN_CSV = Path(__file__).resolve().parents[1] / "data" / "external" / "ghcn_tmax_anomaly.csv"
 
-pytestmark = pytest.mark.skipif(
-    not GHCN_CSV.exists(), reason="GHCN data not downloaded; run python data/fetch_ghcn_temperature.py"
-)
+pytestmark = [
+    pytest.mark.validation,
+    pytest.mark.skipif(
+        not GHCN_CSV.exists(), reason="GHCN data not downloaded; run python data/fetch_ghcn_temperature.py"
+    ),
+]
 
 
 @pytest.fixture(scope="module")

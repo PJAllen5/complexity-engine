@@ -23,6 +23,8 @@ import pytest
 
 from complexity_engine.analysis import analyze_dataset
 
+pytestmark = pytest.mark.validation
+
 NOISES = (0.5, 1.5, 2.5, 3.5, 5.0)
 N, BOX, SPEED, RADIUS = 100, 7.0, 0.03, 1.0
 BURN_IN, STEPS = 1000, 6000
